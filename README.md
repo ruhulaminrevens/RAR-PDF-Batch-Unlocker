@@ -10,6 +10,10 @@
 
 > **বাংলায় সংক্ষেপে:** নিজের PC-তে, internet বা online upload ছাড়াই, একাধিক password-protected PDF scan, analyze এবং আপনার জানা passwords দিয়ে batch unlock করুন। Unknown-password PDFs-এর আলাদা report পাওয়া যাবে। Originals overwrite করা হয় না।
 
+## Current development status
+
+`main` now contains the **1.1.0 dark workspace release candidate**. The published download below is still **v1.0.0** until Windows validation and real screenshot review finish. [Redesign scope and validation](docs/REDESIGN_VALIDATION.md). No release is published by a main-branch push.
+
 ## ⬇️ Download & install — CMD/PowerShell লাগবে না
 
 **[Download RAR PDF Batch Unlocker v1.0.0 — Windows Setup EXE](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/download/v1.0.0/RAR-PDF-Batch-Unlocker-Setup.exe)**
@@ -171,7 +175,7 @@ Optional vault requires a supported Windows Credential Locker backend. For sensi
 
 | Path | Purpose |
 | --- | --- |
-| [`app.py`](app.py) | Tkinter GUI, form controls, password groups, progress, filters, event polling |
+| [`app.py` / `ui.py`](app.py) | Tkinter GUI, form controls, password groups, progress, filters, event polling |
 | [`core.py`](core.py) | qpdf subprocess, security analysis, path validation, batch processing, CSV reports |
 | [`vault.py`](vault.py) | Optional Windows Credential Locker integration via `keyring` |
 | [`tests/test_core.py`](tests/test_core.py) | Processing, retry, path safety and security tests |

@@ -1,21 +1,15 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-echo [1/3] Running unit tests...
-py -3 -m unittest discover -s tests -v
+python -m pip install -r requirements-build.txt -r requirements-test.txt
 if errorlevel 1 goto fail
-echo [2/3] Checking PyInstaller...
-py -3 -m PyInstaller --version >nul 2>&1
-if errorlevel 1 (
-  echo PyInstaller is not installed. Install with: py -3 -m pip install -r requirements-build.txt
-  goto fail
-)
-echo [3/3] Building offline GUI application...
-py -3 -m PyInstaller --noconfirm --clean --onefile --windowed --name "RAR-PDF-Batch-Unlocker" app.py
+python -m unittest discover -s tests -v
 if errorlevel 1 goto fail
-echo EXE READY: %cd%\dist\RAR-PDF-Batch-Unlocker.exe
-echo NOTE: qpdf must be installed separately on the target Windows PC.
-echo NOTE: Binary is UNSIGNED unless signed with your own code-signing certificate.
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+if errorlevel 1 goto fail
+echo GUI READY: %cd%\dist\RAR-PDF-Batch-Unlocker\RAR-PDF-Batch-Unlocker.exe
+echo Compile installer\setup.iss using Inno Setup 6 to create the installer.
+echo No release is published by this script. The build is unsigned.
 pause
 exit /b 0
 :fail

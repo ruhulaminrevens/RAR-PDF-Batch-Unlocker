@@ -1,2 +1,2 @@
-pyinstaller>=6,<8
-keyring>=25,<27
+pyinstaller==6.16.0
+keyring==25.6.0

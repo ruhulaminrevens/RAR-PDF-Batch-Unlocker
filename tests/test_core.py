@@ -133,3 +133,12 @@ class ExtendedTests(unittest.TestCase):
         self.assertEqual(list(self.dst.rglob('*.pdf')),[])
 
 if __name__ == '__main__': unittest.main()
+
+class StdinPrivacyTest(unittest.TestCase):
+    def test_password_uses_stdin_not_arguments_or_environment(self):
+        with patch.object(core.subprocess,'run') as run:
+            core.run_qpdf('qpdf',['--password-file=-','--decrypt','in.pdf','out.pdf'],'synthetic-secret')
+        args,kwargs=run.call_args
+        self.assertNotIn('synthetic-secret',' '.join(args[0]))
+        self.assertEqual(kwargs['input'],b'synthetic-secret\n')
+        self.assertNotIn('env',kwargs)

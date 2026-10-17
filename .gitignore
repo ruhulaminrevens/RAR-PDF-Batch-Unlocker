@@ -9,3 +9,5 @@ release/
 qpdf.zip
 qpdf-extract/
 bundled-qpdf/
+qa/
+qpdf-*.zip

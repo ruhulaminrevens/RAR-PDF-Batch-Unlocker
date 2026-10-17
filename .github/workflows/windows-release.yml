@@ -1,10 +1,18 @@
-name: Build Windows Installer
+name: Windows validation and installer
 on:
+  push:
+    branches: [main]
+    tags: ['v1.*']
+    paths-ignore: ['docs/**', 'README.md']
+  pull_request:
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  build:
+  validate:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -12,64 +20,85 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validate full source is uploaded
+      - name: Install pinned build and test dependencies
+        run: python -m pip install -r requirements-build.txt -r requirements-test.txt
+      - name: Compile Python sources
+        run: python -m compileall -q app.py ui.py branding.py core.py vault.py scripts tests
+      - name: Build branded GUI with checksum-verified qpdf
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+      - name: Automated tests including real qpdf and Tk
         shell: pwsh
         run: |
-          foreach ($p in @('app.py','core.py','tests/test_core.py','installer/setup.iss')) {
-            if (!(Test-Path $p)) { throw "Missing required source file: $p" }
-          }
-      - name: Automated tests
-        run: python -m unittest discover -s tests -v
-      - name: Install packaging tools
-        run: python -m pip install -r requirements-build.txt
-      - name: Download official qpdf
-        shell: pwsh
-        run: |
-          $ProgressPreference='SilentlyContinue'
-          Invoke-WebRequest 'https://github.com/qpdf/qpdf/releases/download/v12.4.2/qpdf-12.4.2-mingw64.zip' -OutFile qpdf.zip
-          Expand-Archive qpdf.zip -DestinationPath qpdf-extract
-          $exe=Get-ChildItem qpdf-extract -Recurse -Filter qpdf.exe | Select-Object -First 1
-          if (!$exe) { throw 'Could not find qpdf in official archive' }
-          New-Item -ItemType Directory -Force bundled-qpdf/bin | Out-Null
-          Copy-Item "$($exe.Directory.FullName)/*" bundled-qpdf/bin -Recurse -Force
-          & bundled-qpdf/bin/qpdf.exe --version
-      - name: Verify qpdf bundled binary
-        shell: pwsh
-        run: |
-          & bundled-qpdf/bin/qpdf.exe --version
-          if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf did not start' }
-      - name: Package GUI and qpdf
-        shell: pwsh
-        run: |
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --name RAR-PDF-Batch-Unlocker app.py
-          New-Item -ItemType Directory -Force dist/RAR-PDF-Batch-Unlocker/qpdf | Out-Null
-          Copy-Item bundled-qpdf/bin dist/RAR-PDF-Batch-Unlocker/qpdf/bin -Recurse -Force
-      - name: Verify packaged EXE can start
-        shell: pwsh
-        run: |
-          $exe = (Resolve-Path 'dist/RAR-PDF-Batch-Unlocker/RAR-PDF-Batch-Unlocker.exe').Path
-          $p = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 4
-          $p.Refresh()
-          if ($p.HasExited) { throw "Packaged GUI exited unexpectedly with code $($p.ExitCode)" }
-          Stop-Process -Id $p.Id -Force
-      - name: Package Windows installer
-        shell: pwsh
-        run: |
-          choco install innosetup --yes --no-progress
-          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'installer\setup.iss'
+          $env:RAR_TEST_QPDF=(Resolve-Path 'bundled-qpdf/bin/qpdf.exe').Path
+          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath test-results.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-FileHash release/RAR-PDF-Batch-Unlocker-Setup.exe -Algorithm SHA256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: RAR-PDF-Batch-Unlocker-Setup
-          path: release/RAR-PDF-Batch-Unlocker-Setup.exe
-      - name: Publish verified-build release asset
+      - name: Real GUI scenario and screenshots
+        shell: pwsh
+        run: |
+          $env:PATH="$(Resolve-Path 'bundled-qpdf/bin');$env:PATH"
+          python scripts/capture_screenshots.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile branded installer
+        shell: pwsh
+        run: |
+          $compiler='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $compiler)) { choco install innosetup --version=6.6.1 --yes --no-progress }
+          & $compiler 'installer/setup.iss'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hash=(Get-FileHash release/RAR-PDF-Batch-Unlocker-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  RAR-PDF-Batch-Unlocker-Setup.exe" | Set-Content release/SHA256SUMS.txt
+      - name: Install, exercise real installed GUI, verify icons and uninstall
+        shell: pwsh
+        run: ./scripts/validate_windows.ps1
+      - name: Record validation commit
         if: success()
-        uses: softprops/action-gh-release@v2
+        shell: pwsh
+        run: |
+          "Validated commit: $env:GITHUB_SHA`nRun: $env:GITHUB_RUN_ID`nInstaller is unsigned." | Set-Content release/VALIDATION.txt
+      - name: Upload validated installer
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v1.0.0
-          name: RAR PDF Batch Unlocker v1.0.0
-          files: release/RAR-PDF-Batch-Unlocker-Setup.exe
-          body: 'Unsigned Windows 10/11 x64 installer with bundled qpdf. Review security considerations in README.'
-          make_latest: true
+          name: RAR-PDF-Batch-Unlocker-validated-installer
+          path: release/*
+      - name: Upload real screenshots and QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-QA-evidence
+          path: |
+            qa/screenshots/*
+            qa/*.json
+            qa/*.log
+            test-results.txt
+          if-no-files-found: warn
+  publish:
+    # Pushing main or running a manual validation NEVER publishes a release.
+    # Only an intentional new tag, after screenshot review, may publish.
+    if: startsWith(github.ref, 'refs/tags/v1.') && github.ref != 'refs/tags/v1.0.0'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify new version and prevent release replacement
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python -c "from branding import VERSION; import os; assert os.environ['TAG'] == 'v'+VERSION"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; replacement is forbidden.'; exit 1
+          fi
+          test -f "docs/releases/$TAG.md"
+      - uses: actions/download-artifact@v4
+        with:
+          name: RAR-PDF-Batch-Unlocker-validated-installer
+          path: release
+      - name: Publish new validated installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" release/* --verify-tag --title "RAR PDF Batch Unlocker $TAG" --notes-file "docs/releases/$TAG.md" --latest
