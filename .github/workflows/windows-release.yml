@@ -33,7 +33,9 @@ jobs:
         run: |
           $env:RAR_TEST_QPDF=(Resolve-Path 'bundled-qpdf/bin/qpdf.exe').Path
           python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath test-results.txt
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $code=$LASTEXITCODE
+          python scripts/annotate_failures.py test-results.txt
+          if ($code -ne 0) { exit $code }
       - name: Real GUI scenario and screenshots
         shell: pwsh
         run: |
