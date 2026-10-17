@@ -169,7 +169,7 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(core.classify_os_error(ValueError('x'))[0], 'Error')
 
     def test_formula_cells_escaped_and_restored(self):
-        for value in ('=HYPERLINK("x").pdf', '+1.pdf', '-a.pdf', '@x.pdf'):
+        for value in ('=SUM(1,2).pdf', '+1.pdf', '-a.pdf', '@x.pdf'):
             self.assertTrue(core.escape_cell(value).startswith("'"))
             self.assertEqual(core.unescape_cell(core.escape_cell(value)), value)
         self.assertEqual(core.escape_cell("O'Brien.pdf"), "O'Brien.pdf")
@@ -309,7 +309,7 @@ class QpdfTests(Base):
 
     def test_unicode_formula_and_long_paths(self):
         deep = self.src / 'বাংলা ফোল্ডার' / ('দীর্ঘ-নাম-' * 6) / ('x' * 60) / ('y' * 60)
-        names = ['ব্যাংক স্টেটমেন্ট ২০২৬.pdf', '=HYPERLINK("x").pdf']
+        names = ['ব্যাংক স্টেটমেন্ট ২০২৬.pdf', '=SUM(1,2).pdf']
         make_pdf(deep / names[0], KNOWN)
         make_pdf(self.src / names[1], KNOWN)
         rows, done = self.run_batch(self.settings)

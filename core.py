@@ -531,6 +531,29 @@ def check_writable(dst: Path):
         remove_quietly(probe)
 
 
+def probe_readable(path: Path):
+    """Open the original read-only. On Windows use CreateFileW so a sharing
+    violation (file open in another program) is told apart from access denied;
+    the C runtime reports both as EACCES."""
+    if sys.platform == 'win32':
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        k32.CreateFileW.restype = wintypes.HANDLE
+        k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                                    wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        handle = k32.CreateFileW(fs(path), 0x80000000, 0x7, None, 3, 0x80, None)
+        if handle == wintypes.HANDLE(-1).value:
+            code = ctypes.get_last_error()
+            err = OSError(errno.EACCES, ctypes.FormatError(code).strip())
+            err.winerror = code
+            raise err
+        k32.CloseHandle(handle)
+        return
+    with open(path, 'rb') as fh:
+        fh.read(1)
+
+
 def classify_os_error(exc: BaseException, where: str = 'file') -> tuple[str, str]:
     winerror = getattr(exc, 'winerror', None)
     code = getattr(exc, 'errno', None)
@@ -593,8 +616,7 @@ def _process_one(settings: Settings, path: Path, rel: str, dst: Path, stop: thre
             row.update(status='SkippedExisting', details='Existing output was not overwritten')
             return row, None
         try:  # A clear status for locked or unreadable originals before qpdf runs.
-            with open(fs(path), 'rb') as fh:
-                fh.read(1)
+            probe_readable(path)
         except OSError as exc:
             status, details = classify_os_error(exc, 'source PDF')
             row.update(status=status, details=details)
