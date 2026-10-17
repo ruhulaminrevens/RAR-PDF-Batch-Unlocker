@@ -326,6 +326,19 @@ class QpdfTests(Base):
         for row in mine:
             self.assertTrue(os.path.exists(core.fs(self.dst / row['relative'])))
 
+    def test_short_work_folder_path_and_bangla_names(self):
+        make_pdf(self.src / 'বাংলা' / 'হিসাব ২০২৬.pdf', KNOWN)
+        self.settings.include_unencrypted = True
+        with patch.object(core, 'needs_staging', return_value=True):
+            rows, done = self.run_batch(self.settings)
+        by = {Path(r['source']).name: r for r in rows}
+        self.assertEqual(by['হিসাব ২০২৬.pdf']['status'], 'Unlocked')
+        self.assertIn('short work folder', by['হিসাব ২০২৬.pdf']['warnings'])
+        self.assertEqual(by['Welcome.pdf']['status'], 'CopiedUnencrypted')
+        self.assertEqual(sum(r['status'] == 'Unlocked' for r in rows), 4)
+        self.assertFalse([d for d in self.dst.iterdir() if d.name.startswith(core.WORK_MARK)])
+        self.originals_unchanged()
+
     def test_analyze_and_dry_run_write_no_pdf(self):
         self.settings.dry_run = True
         rows, _ = self.run_batch(self.settings)

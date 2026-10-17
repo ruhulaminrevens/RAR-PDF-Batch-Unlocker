@@ -513,6 +513,10 @@ def clean_stale_temps(dst: Path) -> int:
     removed = 0
     if not dst.is_dir():
         return 0
+    for entry in list(dst.iterdir()):
+        if entry.is_dir() and entry.name.startswith(WORK_MARK):
+            shutil.rmtree(fs(entry), ignore_errors=True)
+            removed += 1
     for root, dirs, names in os.walk(dst, followlinks=False):
         for name in names:
             if TEMP_MARK in name or (LEGACY_TEMP_MARK in name and name.split(LEGACY_TEMP_MARK)[0].lower().endswith('.pdf')):
@@ -609,6 +613,7 @@ def _process_one(settings: Settings, path: Path, rel: str, dst: Path, stop: thre
                status='Error', details='', attempts=0, elapsed_seconds=0, security='', group=group,
                size_bytes='', warnings='')
     temp = None
+    work = None
     stop_batch = None
     try:
         row['size_bytes'] = os.stat(fs(path)).st_size
@@ -621,10 +626,20 @@ def _process_one(settings: Settings, path: Path, rel: str, dst: Path, stop: thre
             status, details = classify_os_error(exc, 'source PDF')
             row.update(status=status, details=details)
             return row, None
-        security, note = inspect_pdf(settings.qpdf, path, settings.timeout, stop)
+        # qpdf cannot open paths beyond the classic Windows limit (even with \\?\),
+        # so long-path files go through a short private work folder.
+        if needs_staging(path, target):
+            work = make_work_dir(dst)
+            engine_src = work / 'in.pdf'
+            shutil.copyfile(fs(path), fs(engine_src))
+        else:
+            engine_src = path
+        security, note = inspect_pdf(settings.qpdf, engine_src, settings.timeout, stop)
         row['security'] = security
         warnings = [note] if note else []
-        if security == 'InvalidPDF':
+        if security == 'InvalidPDF' and 'no such file' in note.lower():
+            row.update(status='PathTooLong', details='qpdf could not open this path')
+        elif security == 'InvalidPDF':
             row.update(status='InvalidPDF', details=note or 'qpdf could not read the file')
         elif security == 'InspectionFailed':
             row.update(status='InspectionFailed', details=note)
@@ -639,7 +654,8 @@ def _process_one(settings: Settings, path: Path, rel: str, dst: Path, stop: thre
                 with open(fs(path), 'rb') as fi, open(fs(temp), 'xb') as fo:
                     shutil.copyfileobj(fi, fo, 1024 * 1024)
                     fo.flush(); os.fsync(fo.fileno())
-                ok, why = verify_output(settings.qpdf, temp, settings.timeout, stop)
+                # A staged work copy has identical bytes and a path qpdf can open.
+                ok, why = verify_output(settings.qpdf, engine_src if work else temp, settings.timeout, stop)
                 if not ok:
                     row.update(status='VerificationFailed', details=why)
                 else:
@@ -654,8 +670,8 @@ def _process_one(settings: Settings, path: Path, rel: str, dst: Path, stop: thre
                 if stop.is_set():
                     raise Cancelled()
                 row['attempts'] += 1
-                temp = temp_name(target)
-                r = run_qpdf(settings.qpdf, ['--password-file=-', '--decrypt', fs(path), fs(temp)], pw,
+                temp = (work / f'out-{row["attempts"]}.pdf') if work else temp_name(target)
+                r = run_qpdf(settings.qpdf, ['--password-file=-', '--decrypt', fs(engine_src), fs(temp)], pw,
                              settings.timeout, stop)
                 message = qpdf_message(r.stderr)
                 if r.returncode not in (0, 3) or not os.path.exists(fs(temp)):
@@ -674,6 +690,14 @@ def _process_one(settings: Settings, path: Path, rel: str, dst: Path, stop: thre
                     break
                 if why:
                     warnings.append(why)
+                if work:  # bring the verified copy next to its final name, then publish
+                    staged = temp_name(target)
+                    with open(fs(temp), 'rb') as fi, open(fs(staged), 'xb') as fo:
+                        shutil.copyfileobj(fi, fo, 1024 * 1024)
+                        fo.flush(); os.fsync(fo.fileno())
+                    remove_quietly(temp)
+                    temp = staged
+                    warnings.append('long path processed through a short work folder')
                 try:
                     publish(temp, target); temp = None
                 except FileExistsError:
@@ -698,8 +722,25 @@ def _process_one(settings: Settings, path: Path, rel: str, dst: Path, stop: thre
         row.update(status='Error', details=str(exc)[:200])
     finally:
         remove_quietly(temp)
+        if work:
+            shutil.rmtree(fs(work), ignore_errors=True)
         row['elapsed_seconds'] = round(time.monotonic() - started, 2)
     return row, stop_batch
+
+
+LONG_PATH = 240
+WORK_MARK = '.rar-work-'
+
+
+def needs_staging(path: Path, target: Path) -> bool:
+    return sys.platform == 'win32' and max(len(str(path)), len(str(target)) + 30) >= LONG_PATH
+
+
+def make_work_dir(dst: Path) -> Path:
+    base = dst if len(str(dst)) < 150 else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'RAR PDF Batch Unlocker'
+    work = base / f'{WORK_MARK}{uuid.uuid4().hex[:10]}'
+    os.makedirs(fs(work))
+    return work
 
 
 class InsufficientSpace(Exception):
