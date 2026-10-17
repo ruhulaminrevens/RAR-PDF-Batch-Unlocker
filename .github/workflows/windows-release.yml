@@ -1,0 +1,61 @@
+name: Build Windows Installer
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate full source is uploaded
+        shell: pwsh
+        run: |
+          foreach ($p in @('app.py','core.py','tests/test_core.py','installer/setup.iss')) {
+            if (!(Test-Path $p)) { throw "Missing required source file: $p" }
+          }
+      - name: Automated tests
+        run: python -m unittest discover -s tests -v
+      - name: Install packaging tools
+        run: python -m pip install -r requirements-build.txt
+      - name: Download official qpdf
+        shell: pwsh
+        run: |
+          $ProgressPreference='SilentlyContinue'
+          Invoke-WebRequest 'https://github.com/qpdf/qpdf/releases/download/v12.4.2/qpdf-12.4.2-mingw64.zip' -OutFile qpdf.zip
+          Expand-Archive qpdf.zip -DestinationPath qpdf-extract
+          $exe=Get-ChildItem qpdf-extract -Recurse -Filter qpdf.exe | Select-Object -First 1
+          if (!$exe) { throw 'Could not find qpdf in official archive' }
+          New-Item -ItemType Directory -Force bundled-qpdf/bin | Out-Null
+          Copy-Item "$($exe.Directory.FullName)/*" bundled-qpdf/bin -Recurse -Force
+          & bundled-qpdf/bin/qpdf.exe --version
+      - name: Package GUI and qpdf
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --name RAR-PDF-Batch-Unlocker app.py
+          New-Item -ItemType Directory -Force dist/RAR-PDF-Batch-Unlocker/qpdf | Out-Null
+          Copy-Item bundled-qpdf/bin dist/RAR-PDF-Batch-Unlocker/qpdf/bin -Recurse -Force
+      - name: Package Windows installer
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'installer\setup.iss'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-FileHash release/RAR-PDF-Batch-Unlocker-Setup.exe -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RAR-PDF-Batch-Unlocker-Setup
+          path: release/RAR-PDF-Batch-Unlocker-Setup.exe
+      - name: Publish verified-build release asset
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: RAR PDF Batch Unlocker v1.0.0
+          files: release/RAR-PDF-Batch-Unlocker-Setup.exe
+          body: 'Unsigned Windows 10/11 x64 installer with bundled qpdf. Review security considerations in README.'
+          make_latest: true
