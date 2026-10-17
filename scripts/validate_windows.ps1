@@ -2,6 +2,8 @@ $ErrorActionPreference='Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 New-Item -ItemType Directory -Force qa/screenshots | Out-Null
 $installer=(Resolve-Path 'release/RAR-PDF-Batch-Unlocker-Setup.exe').Path
+python scripts/capture_installer.py --installer $installer
+if ($LASTEXITCODE -ne 0) { throw 'Installer screenshot capture failed' }
 $installDir=Join-Path $env:LOCALAPPDATA 'RAR-Installed-QA'
 $p=Start-Process $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS=desktopicon',"/DIR=`"$installDir`"",'/LOG=qa/install.log') -Wait -PassThru
 if ($p.ExitCode -ne 0) { throw "Installer returned $($p.ExitCode)" }

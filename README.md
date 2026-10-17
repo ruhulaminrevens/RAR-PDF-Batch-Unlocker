@@ -105,13 +105,13 @@ Source/Output nested হলে app safety check error দেবে। Original P
 ### Step 3 — Analyze security (recommended first)
 
 1. **Analyze security** চাপুন।
-2. Result table-এ PDF-by-PDF status দেখুন।
+2. Sidebar-এর **Results & reports**-এ PDF-by-PDF status দেখুন।
 3. `PasswordRequired` হলে opening password প্রয়োজন; `PermissionRestricted` সাধারণত permission/restriction-only protection।
-4. Result CSV report তৈরি হতে পারে; document content copy/unlock করা হয় না।
+4. Output folder-এ CSV report তৈরি হয়; PDF copy/unlock করা হয় না। **Dry run** enabled থাকলে শুধু file list হয়, CSV-ও তৈরি হয় না।
 
 ### Step 4 — Add known passwords
 
-1. **Group: General** রেখে পরিচিত password লিখুন → **Add password**।
+1. Sidebar থেকে **Passwords** খুলুন। **Group: General** রেখে পরিচিত password লিখুন → **Add to group**।
 2. আলাদা issuer/department-specific password হলে **New group** বানান (e.g. `Bank`, `Office`)।
 3. নিচের **Folder-to-group mapping**-এ প্রতি লাইনে `relative/folder=Group Name` লিখুন:
 
@@ -127,7 +127,7 @@ Office Documents=Office
 
 ### Step 5 — Start a safe 5-file batch
 
-1. **File limit = 5** দিন।
+1. Sidebar-এর **Run settings** খুলে **File limit = 5** দিন।
 2. **Dry run** tick করে preview করুন; তারপর untick করুন।
 3. **Unlock batch** click করে confirmation দিন।
 4. Progress/status পর্যবেক্ষণ করুন; output copy create হলে খুলে যাচাই করুন।
@@ -175,10 +175,13 @@ Optional vault requires a supported Windows Credential Locker backend. For sensi
 
 | Path | Purpose |
 | --- | --- |
-| [`app.py` / `ui.py`](app.py) | Tkinter GUI, form controls, password groups, progress, filters, event polling |
+| [`app.py`](app.py) | Existing application controller, password groups, worker/event handling and safe stop |
+| [`ui.py`](ui.py) | Dark Tk/ttk layout, sidebar, settings, results and accessible scrolling |
+| [`branding.py`](branding.py), [`assets/`](assets/) | App identity, resource lookup, DPI setup and multi-size icons |
 | [`core.py`](core.py) | qpdf subprocess, security analysis, path validation, batch processing, CSV reports |
 | [`vault.py`](vault.py) | Optional Windows Credential Locker integration via `keyring` |
-| [`tests/test_core.py`](tests/test_core.py) | Processing, retry, path safety and security tests |
+| [`tests/`](tests/) | Engine, GUI, branding, actual qpdf and Windows vault tests |
+| [`scripts/`](scripts/) | Reproducible icons, packaging, synthetic fixtures, real screenshots and installed-GUI QA |
 | [`requirements-build.txt`](requirements-build.txt) | PyInstaller and keyring build dependencies |
 | [`build-windows.bat`](build-windows.bat) | Local developer build helper |
 | [`installer/setup.iss`](installer/setup.iss) | Inno Setup installer recipe |
@@ -192,14 +195,16 @@ Optional vault requires a supported Windows Credential Locker backend. For sensi
 End users can **ignore this section**. On Windows with Python 3.10+, optional dependencies and installed qpdf:
 
 ```powershell
+python -m pip install -r requirements-build.txt -r requirements-test.txt
 python -m unittest discover -s tests -v
-python -m pip install -r requirements-build.txt
 python app.py
 ```
 
-Run [GitHub Actions → Build Windows Installer](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/actions/workflows/windows-release.yml) manually on `main` for Windows CI. Workflow runs source checks, Python tests, downloads qpdf 12.4.2 x64 binaries, packages GUI with PyInstaller, smoke-tests EXE startup, builds Inno Setup installer, uploads workflow artifact and publishes a release.
+Run [GitHub Actions → Windows validation and installer](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/actions/workflows/windows-release.yml) manually on `main`, or push a code change. The pipeline installs pinned top-level dependencies, verifies the official qpdf 12.4.2 archive SHA-256, tests the real GUI/engine/vault, builds the branded installer, installs it, exercises a synthetic batch through its GUI, captures screenshots, verifies shortcuts, and uninstalls it.
 
-**Release management:** Current tag `v1.0.0` already exists. Do not re-use/overwrite a published release asset for future changes without a deliberate release policy; create a new version only when a new release is intended. A green CI build is not a substitute for real installed-app QA.
+**Validation runs do not publish releases.** Download the installer and QA evidence from the successful Actions run. A new release is intentional and gated on Windows validation; existing release assets must never be replaced. See [validation evidence](docs/REDESIGN_VALIDATION.md).
+
+Local packaging uses `build-windows.bat` and the same `scripts/build_windows.ps1` as CI. For icon changes, run `python scripts/generate_branding.py`, commit the generated assets and verify them at small sizes. For source screenshots, run `python scripts/capture_screenshots.py` on a desktop with qpdf available; it uses synthetic PDFs only.
 
 ## 🩺 Troubleshooting / FAQ
 
@@ -214,7 +219,8 @@ Run [GitHub Actions → Build Windows Installer](https://github.com/ruhulaminrev
 | Report contains filenames | By design, CSV includes relative filenames; keep report confidential |
 | Unknown password PDF still locked | Expected unless known password matches; qpdf cannot bypass strong encryption |
 | Windows vault error | Confirm Windows credential backend and use session-only passwords as fallback |
-| Batch takes time | Depends on PDF count, size, number of candidates, storage performance |
+| Batch takes time | Depends on PDF count, size, number of candidates, storage performance; ETA is an estimate based on completed files |
+| Windows still shows an old shortcut icon | Close the app and reopen from the newly installed shortcut. Windows can cache icons; sign out/in if necessary. Do not delete system icon-cache files automatically |
 
 ## 🛡️ Security, compatibility & limitations
 
@@ -231,7 +237,7 @@ Run [GitHub Actions → Build Windows Installer](https://github.com/ruhulaminrev
 
 **Done:** GUI, processing engine, password groups, Security Analyzer, known password retry, CSV logs, installer pipeline, published v1.0.0 EXE.  
 **Pending validation:** Fresh Windows installation, qpdf path, 5 mixed sample PDFs, CSV privacy, vault, screenshot set, antivirus/SmartScreen experience, full 100–1,000 PDFs benchmark.  
-**Potential refinements:** in-app report export controls, higher-quality icon/layout, accessibility, reproducible signed builds, fuller error dialogs.
+**Future validation:** representative large batches, additional Windows display scaling configurations and signed builds when a certificate is available.
 
 ### Support and contribution
 

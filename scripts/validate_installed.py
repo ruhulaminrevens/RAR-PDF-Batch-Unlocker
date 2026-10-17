@@ -37,8 +37,10 @@ def main():
         user32.GetClientRect(hwnd,ctypes.byref(client));user32.GetWindowRect(hwnd,ctypes.byref(outer))
         user32.MoveWindow(hwnd,outer.left,outer.top,1320+(outer.right-outer.left-client.right),960+(outer.bottom-outer.top-client.bottom),True)
         time.sleep(1)
+        client_origin=wintypes.POINT(0,0);user32.ClientToScreen(hwnd,ctypes.byref(client_origin))
+        dx=client_origin.x-coords['client_origin'][0];dy=client_origin.y-coords['client_origin'][1]
         def click(key):
-            x,y=coords[key];user32.SetCursorPos(x,y);user32.mouse_event(2,0,0,0,0);user32.mouse_event(4,0,0,0,0);time.sleep(.15)
+            x,y=coords[key];x+=dx;y+=dy;user32.SetCursorPos(x,y);user32.mouse_event(2,0,0,0,0);user32.mouse_event(4,0,0,0,0);time.sleep(.15)
         def key(v):user32.keybd_event(v,0,0,0);user32.keybd_event(v,0,2,0)
         def enter_text(text):
             user32.keybd_event(0x11,0,0,0);key(0x41);user32.keybd_event(0x11,0,2,0)
@@ -59,7 +61,9 @@ def main():
         deadline=time.monotonic()+20;confirm=0
         while time.monotonic()<deadline and not confirm:
             confirm=user32.FindWindowW(None,'Confirm batch');time.sleep(.2)
-        if not confirm:raise RuntimeError('Installed GUI never reached batch confirmation')
+        if not confirm:
+            ImageGrab.grab().save(screens/'installed-failure-desktop.png')
+            raise RuntimeError('Installed GUI never reached batch confirmation')
         user32.SetForegroundWindow(confirm);key(0x0D)
         deadline=time.monotonic()+90;rows=[];report=None
         while time.monotonic()<deadline:

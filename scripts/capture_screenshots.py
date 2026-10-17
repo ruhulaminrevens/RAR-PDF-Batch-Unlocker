@@ -17,6 +17,8 @@ def main():
     args=parser.parse_args();out=Path(args.output).resolve();out.mkdir(parents=True,exist_ok=True)
     root=Path(args.workspace).resolve();src=create_fixtures(root)
     app=App();app.geometry('1320x960+20+20');app.update()
+    if app.winfo_screenwidth()<1400 or app.winfo_screenheight()<1060:
+        app._shutdown();raise RuntimeError('Desktop too small for a complete screenshot')
     app.source.set(str(src));app.destination.set(str(root/'Output'))
     before={str(p.relative_to(src)):hashlib.sha256(p.read_bytes()).hexdigest() for p in src.rglob('*.pdf')}
     def capture(name,page):
@@ -48,7 +50,7 @@ def main():
             after={str(p.relative_to(src)):hashlib.sha256(p.read_bytes()).hexdigest() for p in src.rglob('*.pdf')}
             assert before==after,'Source files changed'
             # Capture positions from the real widgets for installed-GUI automation.
-            coords={}
+            coords={'client_size':[app.winfo_width(),app.winfo_height()],'client_origin':[app.winfo_rootx(),app.winfo_rooty()]}
             def record(key,w):
                 coords[key]=[w.winfo_rootx()+w.winfo_width()//2,w.winfo_rooty()+w.winfo_height()//2]
             app._navigate('workspace');app.update()
