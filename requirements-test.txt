@@ -2,3 +2,4 @@ Pillow==11.3.0
 pypdf==6.1.1
 cryptography==46.0.2
 pywin32==311; sys_platform == 'win32'
+psutil==7.1.0

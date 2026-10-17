@@ -15,6 +15,9 @@ Copy-Item "$($engine.Directory.FullName)/*" bundled-qpdf/bin -Recurse -Force
 Get-ChildItem qpdf-extract -Recurse -File | Where-Object { $_.Name -match '^(NOTICE|LICENSE|COPYING)' } | ForEach-Object { Copy-Item $_.FullName bundled-qpdf -Force }
 & bundled-qpdf/bin/qpdf.exe --version
 if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf failed to start' }
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name RAR-PDF-Batch-Unlocker --icon assets/app.ico --version-file assets/version-info.txt --add-data 'assets;assets' --hidden-import keyring.backends.Windows app.py
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name RAR-PDF-Batch-Unlocker --icon assets/app.ico --version-file assets/version-info.txt --add-data 'assets;assets' --hidden-import keyring.backends.Windows --hidden-import reports app.py
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
 Copy-Item bundled-qpdf dist/RAR-PDF-Batch-Unlocker/qpdf -Recurse -Force
+python scripts/write_manifest.py dist/RAR-PDF-Batch-Unlocker/qpdf
+if ($LASTEXITCODE -ne 0) { throw 'Engine manifest failed' }
+Copy-Item THIRD-PARTY-NOTICES.txt dist/RAR-PDF-Batch-Unlocker/ -Force

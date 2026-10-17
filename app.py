@@ -9,7 +9,8 @@ import time
 import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
-from core import Settings, process, scan, FAILED
+from core import Settings, process, scan, FAILED, ACTIONS, engine_status, qpdf_version
+import diagnostics
 from branding import APP_NAME, VERSION, prepare_windows
 from ui import ModernUI, STATUS_LABELS, BG, INSET, TEXT, CYAN
 
@@ -40,10 +41,14 @@ class App(ModernUI, tk.Tk):
     def __init__(self):
         prepare_windows()
         super().__init__()
+        diagnostics.install(self)
+        if os.environ.get('RAR_TK_SCALING'):  # QA: emulate 125/150/200 % display scaling
+            self.tk.call('tk','scaling',float(os.environ['RAR_TK_SCALING']))
         self.title(f'{APP_NAME} · {VERSION}')
-        width=min(1320,self.winfo_screenwidth()-60)
-        height=min(960,self.winfo_screenheight()-80)
-        self.geometry(f'{width}x{height}+20+20');self.minsize(1000,650)
+        scale=max(1.0,float(self.tk.call('tk','scaling'))*72/96)
+        width=min(int(1320*scale),self.winfo_screenwidth()-60)
+        height=min(int(960*scale),self.winfo_screenheight()-80)
+        self.geometry(f'{width}x{height}+20+20');self.minsize(min(900,width),min(560,height))
         self.events=queue.Queue();self.stop_flag=threading.Event();self.worker=None
         self.busy=False;self.closing=False;self.poll_id=None
         self.password_groups={'General':[]};self.passwords=self.password_groups['General']
@@ -54,6 +59,10 @@ class App(ModernUI, tk.Tk):
         self.dry_run=tk.BooleanVar();self.analyze_only=tk.BooleanVar()
         self.include_unencrypted=tk.BooleanVar(value=False)
         self.relative_reports=tk.BooleanVar(value=True);self.retry_report=tk.StringVar()
+        self.timeout=tk.StringVar(value='60');self.workers=tk.StringVar(value=str(min(4,max(1,(os.cpu_count() or 2)//2))))
+        self.html_summary=tk.BooleanVar(value=True);self.continue_mode=tk.StringVar(value='retry')
+        self.extra_files=[];self.files_summary=tk.StringVar(value='None added — use a source folder, add PDFs, or both')
+        self.engine_text=tk.StringVar(value='Checking engine…');self.last_html=''
         self.status=tk.StringVar(value='Ready when you are. Choose your folders to begin.')
         self.progress=tk.DoubleVar(value=0);self.progress_text=tk.StringVar(value='0 / 0')
         self.timing=tk.StringVar(value='Elapsed —   •   Estimated remaining —')
@@ -65,7 +74,60 @@ class App(ModernUI, tk.Tk):
         self.counts={};self.last_report='';self.last_output='';self.row_items=[];self.result_records={}
         self.total=0;self.completed=0;self.started_at=None;self.active_source=None
         self._build();self.poll_id=self.after(100,self._poll)
+        threading.Thread(target=self._check_engine,daemon=True).start()
         self.protocol('WM_DELETE_WINDOW',self._close)
+
+    def _check_engine(self):
+        qpdf=self.qpdf.get()
+        if not qpdf:
+            self.events.put(('engine','qpdf was not found. Select qpdf.exe below.'));return
+        ok,detail=engine_status(qpdf)
+        state={True:'Integrity verified',False:'WARNING: integrity check failed',None:'External engine'}[ok]
+        self.events.put(('engine',f'{qpdf_version(qpdf)} · {state} — {detail}'))
+
+    def _add_files(self):
+        if self.busy:return
+        chosen=filedialog.askopenfilenames(title='Add PDF files',filetypes=[('PDF files','*.pdf'),('All files','*')])
+        added=0
+        known={os.path.normcase(os.path.abspath(f)) for f in self.extra_files}
+        for f in chosen:
+            key=os.path.normcase(os.path.abspath(f))
+            if key not in known:self.extra_files.append(f);known.add(key);added+=1
+        self._files_changed(len(chosen)-added)
+
+    def _clear_files(self):
+        self.extra_files.clear();self._files_changed(0)
+
+    def _files_changed(self,duplicates=0):
+        n=len(self.extra_files)
+        if not n:self.files_summary.set('None added — use a source folder, add PDFs, or both')
+        else:
+            names=', '.join(Path(f).name for f in self.extra_files[:3])+(' …' if n>3 else '')
+            self.files_summary.set(f'{n} PDF{"s" if n!=1 else ""}: {names}'+(f'  ({duplicates} duplicate ignored)' if duplicates else ''))
+
+    def _delete_group(self):
+        name=self.group.get()
+        if self.busy or name=='General':
+            messagebox.showinfo('Delete group','The General group cannot be deleted.');return
+        if not messagebox.askyesno('Delete group',f'Delete the group “{name}” and its session passwords?\nFolder rules that use it must be removed too.'):return
+        self.password_groups.pop(name,None)
+        self.groupbox.config(values=list(self.password_groups));self.group.set('General');self._update_count()
+
+    def _open_html(self):self._open_path(self.last_html)
+
+    def _sort_table(self,table,key):
+        cols=list(table['columns']);i=cols.index(key)
+        reverse=getattr(self,'_sort_state',(None,False))==(key,False)
+        self._sort_state=(key,reverse)
+        def value(item):
+            v=table.set(item,key)
+            try:return (0,float(v))
+            except ValueError:return (1,str(v).casefold())
+        items=sorted(table.get_children(''),key=value,reverse=reverse)
+        for n,item in enumerate(items):table.move(item,'',n)
+        for k in cols:
+            text=table.heading(k,'text').rstrip(' ▲▼')
+            table.heading(k,text=text+((' ▼' if reverse else ' ▲') if k==key else ''))
 
     def _use_last_report(self):
         if self.last_report:
@@ -77,14 +139,19 @@ class App(ModernUI, tk.Tk):
         selected=self.filter_status.get();query=self.search.get().casefold().strip()
         for item in self.table.get_children():self.table.detach(item)
         for item,values in self.row_items:
-            if (selected=='All statuses' or values[0]==selected) and (not query or query in ' '.join(map(str,values)).casefold()):
+            if (selected=='All statuses' or values[0]==selected or (selected=='Needs attention' and values[0] in FAILED)) and (not query or query in ' '.join(map(str,values)).casefold()):
                 self.table.move(item,'','end')
 
     def _select_result(self,table):
         selected=table.selection()
         if selected:
-            record=self.result_records.get(selected[0],{})
-            self.result_detail.set(record.get('details',''))
+            r=self.result_records.get(selected[0],{})
+            lines=[f"{STATUS_LABELS.get(r.get('status',''),r.get('status',''))} — {ACTIONS.get(r.get('status',''),'')}"]
+            if r.get('details'):lines.append('Details: '+r['details'])
+            if r.get('warnings'):lines.append('Notes: '+r['warnings'])
+            lines.append('Source: '+r.get('source',''))
+            if r.get('output') and r.get('status') in ('Unlocked','CopiedUnencrypted'):lines.append('Output: '+r['output'])
+            self.result_detail.set('\n'.join(lines))
 
     def _open_path(self,path):
         if not path or not Path(path).exists():
@@ -118,7 +185,9 @@ class App(ModernUI, tk.Tk):
         if self.busy or not pw:return
         if '\r' in pw or '\n' in pw:messagebox.showerror('Invalid','Password contains a newline');return
         arr=self.password_groups.setdefault(self.group.get(),[])
-        if pw not in arr:arr.append(pw)
+        diagnostics.remember_secret(pw)
+        if pw in arr:self.status.set('That password is already in this group; duplicate ignored.')
+        else:arr.append(pw)
         self._update_count()
     def _clear(self):
         self.password_groups[self.group.get()].clear();self.pw_entry.delete(0,'end');self._update_count()
@@ -140,6 +209,7 @@ class App(ModernUI, tk.Tk):
             import vault
             value=vault.load(name)
             if value:
+                diagnostics.remember_secret(value)
                 arr=self.password_groups.setdefault(self.group.get(),[])
                 if value not in arr:arr.append(value)
                 self._update_count();messagebox.showinfo('Loaded','Password loaded into current session group.')
@@ -169,10 +239,16 @@ class App(ModernUI, tk.Tk):
             if not folder or group not in self.password_groups or folder.startswith(('/', '\\')) or '..' in Path(folder.replace('\\','/')).parts:
                 raise ValueError('Invalid mapping or unknown group: '+line)
             mapping[folder]=group
-        if not self.source.get() or not self.destination.get():raise ValueError('Choose source and output folders.')
-        return Settings(Path(self.source.get()),Path(self.destination.get()),self.qpdf.get() or 'qpdf',
+        if not (self.source.get().strip() or self.extra_files):raise ValueError('Choose a source folder or add PDF files.')
+        if not self.destination.get().strip():raise ValueError('Choose an output folder.')
+        try:timeout=int(self.timeout.get());workers=int(self.workers.get())
+        except ValueError:raise ValueError('Timeout and parallel workers must be whole numbers.')
+        report=self.retry_report.get().strip();resume=self.continue_mode.get()=='resume'
+        return Settings(Path(self.source.get().strip()) if self.source.get().strip() else None,Path(self.destination.get()),self.qpdf.get() or 'qpdf',
                         list(self.password_groups['General']),limit,self.dry_run.get(),
-                        analyze_only=analyze,failed_report=self.retry_report.get().strip(),
+                        analyze_only=analyze,failed_report='' if resume else report,resume_report=report if resume else '',
+                        timeout=timeout,workers=workers,html_summary=self.html_summary.get(),app_version=VERSION,
+                        inputs=[Path(f) for f in self.extra_files],
                         password_groups={k:list(v) for k,v in self.password_groups.items() if k!='General'},
                         folder_groups=mapping,max_attempts=attempts,
                         relative_reports=self.relative_reports.get(),include_unencrypted=self.include_unencrypted.get())
@@ -196,8 +272,10 @@ class App(ModernUI, tk.Tk):
 
     def _scan_work(self,settings,mode):
         try:
-            source,_,files=scan(settings)
-            self.events.put(('prepared',{'settings':settings,'mode':mode,'source':source,'count':len(files)}))
+            plan=scan(settings)
+            try:free=shutil.disk_usage(next(p for p in [settings.destination,*settings.destination.parents] if p.exists())).free
+            except (OSError,StopIteration):free=None
+            self.events.put(('prepared',{'settings':settings,'mode':mode,'source':plan.base,'count':len(plan.files),'plan':plan,'free':free}))
         except Exception as exc:self.events.put(('error',str(exc)))
 
     def _prepared(self,payload):
@@ -207,10 +285,11 @@ class App(ModernUI, tk.Tk):
         settings=payload['settings'];count=payload['count']
         self.total=count;self.metric_vars['total'].set(str(count))
         if payload['mode']=='scan':
-            self._done();self.status.set(f'{count} matching PDFs found. No files modified.');return
+            plan=payload['plan']
+            self._done();self.status.set(f"{count} PDFs found ({plan.total_bytes/1048576:.1f} MB) · {plan.duplicates} duplicates ignored · {len(plan.rejected)} not included · {plan.existing_outputs} outputs already exist. No files modified.");return
         if not count:
             self._done();self.status.set('No matching PDF files found. Check your folders, limit or retry report.');return
-        if not (settings.analyze_only or settings.dry_run) and not messagebox.askyesno('Confirm batch',f'Process {count} PDFs?\nOriginals remain unchanged.\nExisting outputs will not be overwritten.',parent=self):
+        if payload['mode']!='scan' and not (settings.analyze_only or settings.dry_run) and not messagebox.askyesno('Confirm batch',self._preview_text(payload),parent=self):
             self._done();self.status.set('Batch not started.');return
         for item,_ in self.row_items:self.table.delete(item)
         for item in self.preview_table.get_children():self.preview_table.delete(item)
@@ -221,6 +300,20 @@ class App(ModernUI, tk.Tk):
         self.active_source=payload['source'];self.started_at=time.monotonic()
         self.status.set('Processing…');self._update_metrics()
         self.worker=threading.Thread(target=self._work,args=(settings,),daemon=True);self.worker.start()
+
+    def _preview_text(self,payload):
+        plan=payload['plan'];s=payload['settings'];free=payload['free']
+        groups=sum(1 for v in s.password_groups.values() if v)+(1 if s.passwords else 0)
+        pw=len(s.passwords)+sum(len(v) for v in s.password_groups.values())
+        lines=[f"Process {len(plan.files)} PDFs ({plan.total_bytes/1048576:.1f} MB)?",'',
+               f"• Duplicates ignored: {plan.duplicates}",f"• Not included (links, unsupported, name conflicts): {len(plan.rejected)}",
+               f"• Outputs that already exist and will be skipped: {plan.existing_outputs}",
+               f"• Passwords: {pw} in {groups} active group(s) · up to {s.max_attempts} attempts per PDF",
+               f"• Timeout {s.timeout} s · {s.workers} parallel worker(s)"+(' · resume' if s.resume_report else ' · failed-only retry' if s.failed_report else '')]
+        if free is not None:
+            lines.append(f"• Free space on output drive: {free/1073741824:.1f} GB"+('  ⚠ may be too little' if free<plan.total_bytes*2 else ''))
+        lines+=['','Originals stay unchanged. Existing outputs are never overwritten.']
+        return '\n'.join(lines)
 
     def _work(self,settings):
         try:process(settings,lambda kind,p:self.events.put((kind,p)),self.stop_flag)
@@ -235,7 +328,7 @@ class App(ModernUI, tk.Tk):
         self.progress.set(100*self.completed/self.total if self.total else 0)
         self.progress_text.set(f"{self.completed} / {self.total}   ·   {self.progress.get():.0f}%")
         self.counts[p['status']]=self.counts.get(p['status'],0)+1
-        name=os.path.relpath(p['source'],self.active_source)
+        name=p.get('relative') or os.path.relpath(p['source'],self.active_source)
         values=(p['status'],name,p.get('security',''),p.get('group',''),p['attempts'],p['elapsed_seconds'])
         item=f'r{len(self.row_items)}'
         tag='good' if p['status'] in ('Unlocked','CopiedUnencrypted') else 'error' if p['status'] in FAILED else 'warn' if p['status']=='PasswordRequired' else 'skip' if p['status'].startswith('Skipped') else 'neutral'
@@ -253,7 +346,7 @@ class App(ModernUI, tk.Tk):
         self.metric_vars['total'].set(str(self.total))
         self.metric_vars['unlocked'].set(str(self.counts.get('Unlocked',0)))
         self.metric_vars['attention'].set(str(sum(v for k,v in self.counts.items() if k in FAILED)))
-        self.metric_vars['skipped'].set(str(sum(v for k,v in self.counts.items() if k.startswith('Skipped'))))
+        self.metric_vars['skipped'].set(str(sum(v for k,v in self.counts.items() if k.startswith('Skipped') or k=='DryRun')))
 
     @staticmethod
     def _duration(seconds):
@@ -264,7 +357,8 @@ class App(ModernUI, tk.Tk):
         elapsed=time.monotonic()-self.started_at
         eta=(elapsed/self.completed*(self.total-self.completed)) if self.completed else None
         remaining=self._duration(eta) if eta is not None else '—'
-        self.timing.set(f"Elapsed {self._duration(elapsed)}   •   Estimated remaining {remaining}" if self.busy else f'Elapsed {self._duration(elapsed)}')
+        rate=f"   •   {self.completed/elapsed*60:.0f} PDFs/min" if self.completed and elapsed>1 else ''
+        self.timing.set(f"Elapsed {self._duration(elapsed)}   •   Estimated remaining {remaining}{rate}" if self.busy else f'Elapsed {self._duration(elapsed)}{rate}')
 
     def _poll(self):
         try:
@@ -275,12 +369,16 @@ class App(ModernUI, tk.Tk):
                 if kind=='prepared':self._prepared(p)
                 elif kind=='scan':self.total=p['count'];self.metric_vars['total'].set(str(self.total))
                 elif kind=='result':self._result(p)
+                elif kind=='engine':self.engine_text.set(p)
                 elif kind=='done':
-                    self._done();self.last_report=p['report'] or ''
-                    self.report_text.set(f"CSV: {self.last_report}" if self.last_report else 'No report created (dry run).')
-                    self.status.set(f"{'Stopped safely' if p['cancelled'] else 'Complete'} · {self.completed} of {self.total} PDFs")
+                    self._done();self.last_report=p['report'] or '';self.last_html=p.get('html') or ''
+                    self.report_text.set(f"CSV: {self.last_report}"+(f"\nHTML summary: {self.last_html}" if self.last_html else '') if self.last_report else 'No report created (dry run).')
+                    state='Stopped: output drive is full' if p.get('halted')=='DiskFull' else 'Stopped safely' if p['cancelled'] else 'Complete'
+                    elapsed=(p.get('summary') or {}).get('elapsed_seconds')
+                    self.status.set(f"{state} · {self.completed} of {self.total} PDFs"+(f" · {elapsed:.1f} s" if elapsed else ''))
                 elif kind=='error':
                     self._done();self.status.set('Processing could not finish. Review the error and your settings.')
+                    diagnostics.log_event('Run error shown to user')
                     messagebox.showerror('Processing error',p)
         except queue.Empty:pass
         if self.busy:self._update_timing()
@@ -299,6 +397,7 @@ class App(ModernUI, tk.Tk):
         else:self._shutdown()
     def _shutdown(self):
         for passwords in self.password_groups.values():passwords.clear()
+        diagnostics.forget_secrets()
         if self.poll_id:self.after_cancel(self.poll_id)
         self.pw_entry.delete(0,'end');self.destroy()
 

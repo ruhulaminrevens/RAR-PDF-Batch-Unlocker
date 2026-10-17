@@ -20,3 +20,17 @@ class BrandingTests(unittest.TestCase):
     def test_frozen_assets_use_bundle_directory(self):
         from unittest.mock import patch
         with patch.object(sys,'_MEIPASS','/bundle',create=True):self.assertEqual(asset_path('app.ico'),Path('/bundle/assets/app.ico'))
+
+
+class VersionConsistencyTests(unittest.TestCase):
+    def test_every_version_string_matches_branding(self):
+        import re
+        from branding import VERSION
+        root = Path(__file__).resolve().parents[1]
+        iss = (root / 'installer' / 'setup.iss').read_text(encoding='utf-8')
+        self.assertIn(f'#define MyAppVersion "{VERSION}"', iss)
+        info = (root / 'assets' / 'version-info.txt').read_text(encoding='utf-8')
+        self.assertEqual(set(re.findall(r"'(?:File|Product)Version','([^']+)'", info)), {VERSION})
+        nums = tuple(int(x) for x in VERSION.split('.')) + (0,)
+        self.assertEqual(set(re.findall(r'(?:file|prod)vers=\(([^)]*)\)', info)), {','.join(map(str, nums))})
+        self.assertTrue((root / 'THIRD-PARTY-NOTICES.txt').is_file())
