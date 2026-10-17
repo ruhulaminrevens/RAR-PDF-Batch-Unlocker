@@ -34,10 +34,7 @@ pypdfium2 — Apache-2.0 / BSD-3-Clause, bundling Google PDFium (BSD-3-Clause)
   https://github.com/pypdfium2-team/pypdfium2  (page rendering to images)
 
 Pillow — MIT-CMU License
-  https://github.com/python-pillow/Pillow  (image handling)
-
-img2pdf — LGPL-3.0
-  https://gitlab.mister-muffin.de/josch/img2pdf  (lossless image-to-PDF)
+  https://github.com/python-pillow/Pillow  (image handling and image-to-PDF)
 
 pdfplumber — MIT License, with pdfminer.six (MIT)
   https://github.com/jsvine/pdfplumber  (text and table extraction)

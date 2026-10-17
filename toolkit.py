@@ -8,7 +8,6 @@ unlock password is supplied; this toolkit does not try to recover unknown passwo
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import io
 import os
 from pathlib import Path
 import sys
@@ -187,33 +186,38 @@ def organize_pdf(input: Path, output: Path, keep: list[int] | None = None,
     return Result([out], len(order), f'{len(order)} pages written (from {n})')
 
 
-def images_to_pdf(images: list[Path], output: Path) -> Result:
-    import img2pdf
+def images_to_pdf(images: list[Path], output: Path, dpi: int = 150) -> Result:
+    """One image per page, in order. Alpha is flattened onto white; no network use."""
     from PIL import Image
-    paths = []
-    for item in images:
-        p = Path(item)
-        if p.suffix.lower() not in SUPPORTED_IMAGES:
-            raise ToolkitError(f'"{p.name}" is not a supported image type.')
-        # Normalize modes img2pdf rejects (e.g. RGBA/P) by flattening to RGB.
-        with Image.open(_fs(p)) as im:
+    frames = []
+    try:
+        for item in images:
+            p = Path(item)
+            if p.suffix.lower() not in SUPPORTED_IMAGES:
+                raise ToolkitError(f'"{p.name}" is not a supported image type.')
+            try:
+                im = Image.open(_fs(p))
+                im.load()
+            except (OSError, ValueError) as exc:
+                raise ToolkitError(f'"{p.name}" could not be read as an image ({type(exc).__name__}).') from None
             if im.mode in ('RGBA', 'LA', 'P'):
                 background = Image.new('RGB', im.size, (255, 255, 255))
-                rgb = im.convert('RGBA')
-                background.paste(rgb, mask=rgb.split()[-1])
-                buf = io.BytesIO()
-                background.save(buf, format='PNG')
-                paths.append(buf.getvalue())
-            else:
-                paths.append(_fs(p))
-    if not paths:
-        raise ToolkitError('No images selected.')
+                rgba = im.convert('RGBA')
+                background.paste(rgba, mask=rgba.split()[-1])
+                im = background
+            elif im.mode != 'RGB':
+                im = im.convert('RGB')
+            frames.append(im)
+        if not frames:
+            raise ToolkitError('No images selected.')
 
-    def write(tmp):
-        with open(_fs(tmp), 'wb') as fh:
-            fh.write(img2pdf.convert(paths))
-    out = _atomic(output, write)
-    return Result([out], len(paths), f'{len(paths)} image(s) combined into one PDF')
+        def write(tmp):
+            frames[0].save(_fs(tmp), 'PDF', save_all=True, append_images=frames[1:], resolution=float(dpi))
+        out = _atomic(output, write)
+    finally:
+        for f in frames:
+            f.close()
+    return Result([out], len(frames), f'{len(frames)} image(s) combined into one PDF')
 
 
 def pdf_to_images(input: Path, output_dir: Path, fmt: str = 'png', dpi: int = 150,
