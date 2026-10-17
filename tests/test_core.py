@@ -310,7 +310,7 @@ class QpdfTests(Base):
     def test_unicode_formula_and_long_paths(self):
         deep = self.src / 'বাংলা ফোল্ডার' / ('দীর্ঘ-নাম-' * 6) / ('x' * 60) / ('y' * 60)
         # TemporaryDirectory cannot delete >260-character paths when long paths are off.
-        self.addCleanup(shutil.rmtree, core.fs(self.root), True)
+        self.addCleanup(shutil.rmtree, ('\\\\?\\' + str(self.root)) if WINDOWS else str(self.root), True)
         names = ['ব্যাংক স্টেটমেন্ট ২০২৬.pdf', '=SUM(1,2).pdf']
         make_pdf(deep / names[0], KNOWN)
         make_pdf(self.src / names[1], KNOWN)
