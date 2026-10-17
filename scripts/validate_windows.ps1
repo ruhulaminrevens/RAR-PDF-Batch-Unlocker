@@ -9,6 +9,8 @@ $p=Start-Process $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/
 if ($p.ExitCode -ne 0) { throw "Installer returned $($p.ExitCode)" }
 $exe=Join-Path $installDir 'RAR-PDF-Batch-Unlocker.exe'
 if (!(Test-Path $exe)) { throw 'Installed EXE missing' }
+$version=(Get-Item $exe).VersionInfo
+if ($version.ProductName -ne 'RAR PDF Batch Unlocker' -or $version.FileVersion -ne '1.1.0') { throw 'Installed EXE branding/version metadata mismatch' }
 $wsh=New-Object -ComObject WScript.Shell
 $shortcuts=@((Join-Path ([Environment]::GetFolderPath('Desktop')) 'RAR PDF Batch Unlocker.lnk'),(Join-Path ([Environment]::GetFolderPath('Programs')) 'RAR PDF Batch Unlocker.lnk'))
 foreach ($path in $shortcuts) {
@@ -23,6 +25,8 @@ foreach ($pair in @(@($exe,'installed-exe-icon.png'),@($installer,'installer-ico
     if (!$icon) { throw "No icon resource in $($pair[0])" }
     $bitmap=$icon.ToBitmap();$bitmap.Save((Join-Path (Resolve-Path qa/screenshots) $pair[1]));$bitmap.Dispose();$icon.Dispose()
 }
+python scripts/verify_icon_resources.py
+if ($LASTEXITCODE -ne 0) { throw 'Extracted icon does not match branding' }
 python scripts/validate_installed.py --exe $exe --qa qa
 if ($LASTEXITCODE -ne 0) { throw 'Installed GUI functional QA failed' }
 $uninstall=Start-Process (Join-Path $installDir 'unins000.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru

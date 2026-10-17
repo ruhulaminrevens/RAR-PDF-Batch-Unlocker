@@ -43,12 +43,17 @@ def main():
             x,y=coords[key];x+=dx;y+=dy;user32.SetCursorPos(x,y);user32.mouse_event(2,0,0,0,0);user32.mouse_event(4,0,0,0,0);time.sleep(.15)
         def key(v):user32.keybd_event(v,0,0,0);user32.keybd_event(v,0,2,0)
         def enter_text(text):
+            import win32clipboard
+            # Clipboard contains public fixtures only. Queue keyboard input in order;
+            # synchronous WM_CHAR raced pending Ctrl+A and dropped the path prefix.
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard();win32clipboard.SetClipboardText(text)
+            finally:win32clipboard.CloseClipboard()
             user32.keybd_event(0x11,0,0,0);key(0x41);user32.keybd_event(0x11,0,2,0)
-            # WM_CHAR to the focused Tk native window avoids keyboard-layout dependence.
-            info=GUITHREADINFO();info.cbSize=ctypes.sizeof(info)
-            user32.GetGUIThreadInfo(0,ctypes.byref(info))
-            if not info.hwndFocus:raise RuntimeError('No focused edit control')
-            for ch in text:user32.SendMessageW(info.hwndFocus,0x0102,ord(ch),0)
+            time.sleep(.2)
+            user32.keybd_event(0x11,0,0,0);key(0x56);user32.keybd_event(0x11,0,2,0)
+            time.sleep(.2)
         def snap(name):
             point=wintypes.POINT(0,0);user32.ClientToScreen(hwnd,ctypes.byref(point))
             im=ImageGrab.grab(bbox=(point.x,point.y,point.x+1320,point.y+960));im.save(screens/name)
@@ -86,6 +91,8 @@ def main():
         if before!={p:hashlib.sha256(p.read_bytes()).hexdigest() for p in before}:raise RuntimeError('Originals changed')
         if KNOWN in report.read_text(encoding='utf-8-sig'):raise RuntimeError('Password leaked to report')
         time.sleep(.6);snap('installed-batch.png')
+        user32.GetWindowRect(hwnd,ctypes.byref(outer))
+        ImageGrab.grab(bbox=(outer.left,outer.top,outer.right,outer.bottom)).save(screens/'installed-window.png')
         (qa/'installed-validation.json').write_text(json.dumps({'counts':counts,'originals_unchanged':True,'outputs_verified_unencrypted':3,'password_absent_from_report':True,'interaction':'Actual installed EXE, mouse/keyboard input and confirmation dialog','platform':sys.platform},indent=2))
         user32.PostMessageW(hwnd,0x0010,0,0);proc.wait(timeout=15)
         if proc.returncode!=0:raise RuntimeError('Installed app did not exit cleanly')

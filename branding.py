@@ -29,6 +29,7 @@ def apply_window_icon(window):
     window.iconphoto(True, window._brand_icon)
     if sys.platform == 'win32':
         window.iconbitmap(default=str(asset_path('app.ico')))
+        window.iconbitmap(str(asset_path('app.ico')))
         window.update_idletasks()
         # Native title bar remains accessible and supports normal Windows snapping.
         import ctypes
