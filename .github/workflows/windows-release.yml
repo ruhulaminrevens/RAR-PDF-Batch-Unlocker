@@ -33,12 +33,26 @@ jobs:
           New-Item -ItemType Directory -Force bundled-qpdf/bin | Out-Null
           Copy-Item "$($exe.Directory.FullName)/*" bundled-qpdf/bin -Recurse -Force
           & bundled-qpdf/bin/qpdf.exe --version
+      - name: Verify qpdf bundled binary
+        shell: pwsh
+        run: |
+          & bundled-qpdf/bin/qpdf.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf did not start' }
       - name: Package GUI and qpdf
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --clean --onedir --windowed --name RAR-PDF-Batch-Unlocker app.py
           New-Item -ItemType Directory -Force dist/RAR-PDF-Batch-Unlocker/qpdf | Out-Null
           Copy-Item bundled-qpdf/bin dist/RAR-PDF-Batch-Unlocker/qpdf/bin -Recurse -Force
+      - name: Verify packaged EXE can start
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path 'dist/RAR-PDF-Batch-Unlocker/RAR-PDF-Batch-Unlocker.exe').Path
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 4
+          $p.Refresh()
+          if ($p.HasExited) { throw "Packaged GUI exited unexpectedly with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
       - name: Package Windows installer
         shell: pwsh
         run: |
