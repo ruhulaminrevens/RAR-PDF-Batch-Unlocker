@@ -1,0 +1,12 @@
+{
+  "platform": "win32",
+  "qpdf": "D:\\a\\RAR-PDF-Batch-Unlocker\\RAR-PDF-Batch-Unlocker\\bundled-qpdf\\bin\\qpdf.EXE",
+  "fixture_count": 5,
+  "counts": {
+    "PasswordNotMatched": 1,
+    "Unlocked": 3,
+    "SkippedUnencrypted": 1
+  },
+  "originals_unchanged": true,
+  "screenshots": "Actual source GUI desktop captures; synthetic fixtures only"
+}

@@ -10,51 +10,54 @@
 
 > **বাংলায় সংক্ষেপে:** নিজের PC-তে, internet বা online upload ছাড়াই, একাধিক password-protected PDF scan, analyze এবং আপনার জানা passwords দিয়ে batch unlock করুন। Unknown-password PDFs-এর আলাদা report পাওয়া যাবে। Originals overwrite করা হয় না।
 
-## Current development status
+## Download & install
 
-`main` now contains the **1.1.0 dark workspace release candidate**. The published download below is still **v1.0.0** until Windows validation and real screenshot review finish. [Redesign scope and validation](docs/REDESIGN_VALIDATION.md). No release is published by a main-branch push.
+**[Download RAR PDF Batch Unlocker v1.1.0 — Windows Setup EXE](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/download/v1.1.0/RAR-PDF-Batch-Unlocker-Setup.exe)**
 
-## ⬇️ Download & install — CMD/PowerShell লাগবে না
+[Release notes](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/tag/v1.1.0) · [SHA-256 checksum](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/download/v1.1.0/SHA256SUMS.txt) · [Previous v1.0.0](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/tag/v1.0.0)
 
-**[Download RAR PDF Batch Unlocker v1.0.0 — Windows Setup EXE](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/download/v1.0.0/RAR-PDF-Batch-Unlocker-Setup.exe)**
+1. Setup EXE download করে install করুন। Python, PowerShell বা qpdf আলাদাভাবে install করতে হবে না।
+2. Desktop / Start Menu থেকে app খুলুন → **Batch workspace**-এ Source ও Output folder দিন।
+3. **Analyze security** চালিয়ে **Passwords** section-এ জানা password add করুন।
+4. **Run settings**-এ প্রথমে 5-file limit দিয়ে test করুন → **Unlock batch**।
+5. **Results & reports**-এ result, CSV এবং failed-only retry পাবেন।
 
-[All releases](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases) · [Latest installer link](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/latest/download/RAR-PDF-Batch-Unlocker-Setup.exe) · [Source code](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker)
+**Unsigned installer:** Windows SmartScreen warning আসতে পারে। Download source ও SHA-256 মিলিয়ে নিন। v1.0.0-এর release এবং installer অপরিবর্তিত আছে।
 
-1. উপরের **Download** link-এ click করে `RAR-PDF-Batch-Unlocker-Setup.exe` save করুন।
-2. Installer run করুন এবং installation wizard অনুসরণ করুন।
-3. Start Menu/Desktop shortcut থেকে **RAR PDF Batch Unlocker** open করুন।
-4. **Source**, **Output** folder select করুন। **qpdf.exe** bundled থাকার কথা; field খালি থাকলে install folder-এর `qpdf\bin\qpdf.exe` manually browse করুন।
-5. প্রথমে **Scan filenames**, তারপর **Analyze security** চালান। এরপর 5-file trial করে full batch দিন।
+### Modern workspace, existing engine
 
-✅ End users-এর জন্য আলাদা Python, qpdf বা PowerShell install করা লাগার কথা নয়।  
-⚠️ **Installer unsigned:** Windows SmartScreen warning আসতে পারে; publisher/source verify করুন। Application-এর Windows startup build pipeline-এ smoke-tested, কিন্তু real installed-machine PDF batch / full end-to-end QA এখনও pending।
+Navy / cyan / violet interface, persistent sidebar, scrollable pages, real progress and timing, searchable results, masked password controls এবং consistent Windows branding। `core.py` ও `vault.py` আগের working baseline থেকে অপরিবর্তিত।
 
-### Release verification (v1.0.0)
+![Actual installed Windows app after synthetic batch processing](docs/screenshots/installed-window.png)
 
-| Item | Verified |
+### Windows validation
+
+[Successful Windows run](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/actions/runs/39014860198) · [Full validation record](docs/REDESIGN_VALIDATION.md) · [Screenshot provenance](docs/SCREENSHOTS.md)
+
+| Check | Result |
 | --- | --- |
-| GitHub Actions build #3 | **Success** (2026-10-17) |
-| Automated core tests | Passed on Windows CI |
-| qpdf bundled binary | Started successfully in Windows CI |
-| Packaged GUI EXE | Startup smoke test passed in Windows CI |
-| Inno Setup packaging | Passed |
-| GitHub Release EXE | Published |
-| Installed-app GUI/real document processing | **Awaiting manual Windows QA** |
-| Authenticode signature | Not signed |
+| Automated tests | **23 passed; zero skipped** |
+| Actual installed-GUI batch | **5 PDFs: 3 unlocked, 1 no password match, 1 already unencrypted** |
+| Original files / CSV privacy | Hashes unchanged; supplied password absent from report |
+| Bundled qpdf / decrypted outputs | 12.4.2 archive checked; outputs verified unencrypted |
+| Windows vault | Synthetic save/load/delete passed |
+| Icons & EXE metadata | EXE/installer/uninstaller icons match; product/version metadata verified |
+| Desktop / Start Menu shortcuts | Targets and icon paths verified |
+| Install / uninstall | Passed on Windows CI |
 
-**Published setup SHA-256:** `65c3efe95038533ba776e7438dcbb9854f52f7d7f667c78287fbdb9048233dde`  
-**Asset size:** 15,623,904 bytes (~15.6 MB decimal). Compare your downloaded EXE with this hash when needed.
+The final installer is promoted from the validated build **without rebuilding it**. Your own Windows 10/11 display scaling, antivirus behavior and representative documents remain machine-specific checks; no large-batch benchmark is claimed.
 
-## 📷 Screenshots — real captures only
+### More real screenshots
 
-App screenshots have **not yet been committed**. To avoid misleading visitors, no generated mockup is presented as a live app screenshot. Please see **[Screenshots checklist & capture guide](docs/SCREENSHOTS.md)**. After local installation validation, add redacted images such as:
-- `docs/screenshots/main-window.png` — source/output paths and overall layout
-- `docs/screenshots/security-analysis.png` — security analysis with test PDFs
-- `docs/screenshots/password-groups.png` — masked session password input
-- `docs/screenshots/batch-results.png` — progress / result filter and report (redacted)
-- `docs/screenshots/installer.png` — real setup wizard
+<details>
+<summary>Password groups, results, settings and installer</summary>
 
-**নিরাপত্তা:** Screenshot-এ real bank statement names, NID, addresses, account numbers, saved credentials, full sensitive paths বা password দেখাবেন না।
+![Masked password groups and folder mappings](docs/screenshots/password-groups.png)
+![Actual qpdf batch results](docs/screenshots/batch-results.png)
+![Run settings](docs/screenshots/run-settings.png)
+![Actual Windows installer wizard](docs/screenshots/installer.png)
+
+</details>
 
 ## ✨ Key features
 
@@ -202,7 +205,7 @@ python app.py
 
 Run [GitHub Actions → Windows validation and installer](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/actions/workflows/windows-release.yml) manually on `main`, or push a code change. The pipeline installs pinned top-level dependencies, verifies the official qpdf 12.4.2 archive SHA-256, tests the real GUI/engine/vault, builds the branded installer, installs it, exercises a synthetic batch through its GUI, captures screenshots, verifies shortcuts, and uninstalls it.
 
-**Validation runs do not publish releases.** Download the installer and QA evidence from the successful Actions run. A new release is intentional and gated on Windows validation; existing release assets must never be replaced. See [validation evidence](docs/REDESIGN_VALIDATION.md).
+**Validation runs do not publish releases.** Download the installer and QA evidence from the successful Actions run. A new release is intentional: the separate publisher runs only on a `release/v1.*` branch, verifies its declared successful Windows run and unchanged application source, then promotes that exact artifact. Existing release assets must never be replaced. See [validation evidence](docs/REDESIGN_VALIDATION.md).
 
 Local packaging uses `build-windows.bat` and the same `scripts/build_windows.ps1` as CI. For icon changes, run `python scripts/generate_branding.py`, commit the generated assets and verify them at small sizes. For source screenshots, run `python scripts/capture_screenshots.py` on a desktop with qpdf available; it uses synthetic PDFs only.
 
@@ -231,13 +234,13 @@ Local packaging uses `build-windows.bat` and the same `scripts/build_windows.ps1
 - Some malformed or unusual PDFs may fail verification; check report before deleting any originals.
 - `PasswordNotMatched` is **not** proof the file is unrecoverable—only that the supplied candidates did not match.
 - The current build is unsigned and not certified for every enterprise endpoint.
-- Windows CI tests and packaged GUI startup passed; **installed EXE on user's PC, screenshot evidence, large-scale real PDF tests, and security audit remain pending**.
+- Automated Windows installation, actual installed-GUI fixture processing, screenshots, vault and uninstall passed. User-machine QA, large real-document benchmarks and an independent security audit are not claimed.
 
 ## 📌 Project status and next improvements
 
-**Done:** GUI, processing engine, password groups, Security Analyzer, known password retry, CSV logs, installer pipeline, published v1.0.0 EXE.  
-**Pending validation:** Fresh Windows installation, qpdf path, 5 mixed sample PDFs, CSV privacy, vault, screenshot set, antivirus/SmartScreen experience, full 100–1,000 PDFs benchmark.  
-**Future validation:** representative large batches, additional Windows display scaling configurations and signed builds when a certificate is available.
+**Completed:** modern dark GUI, consistent Windows branding, existing qpdf engine and password features retained, real Windows screenshots, 23 passing tests, installed-GUI synthetic batch, shortcut/icon checks and uninstall validation.
+
+**Next on your PC:** install v1.1.0, select a small representative five-file batch, verify output readability and confirm your preferred Windows scaling. Keep original PDFs. Signing and large-batch benchmarking are future work.
 
 ### Support and contribution
 

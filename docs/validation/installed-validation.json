@@ -1,0 +1,12 @@
+{
+  "counts": {
+    "PasswordNotMatched": 1,
+    "Unlocked": 3,
+    "SkippedUnencrypted": 1
+  },
+  "originals_unchanged": true,
+  "outputs_verified_unencrypted": 3,
+  "password_absent_from_report": true,
+  "interaction": "Actual installed EXE, mouse/keyboard input and confirmation dialog",
+  "platform": "win32"
+}

@@ -1,49 +1,30 @@
-# Screenshot Guide / Screenshots সংগ্রহের নির্দেশনা
+# Real Windows screenshots
 
-> **Status:** Real application screenshots are not yet uploaded. GitHub Actions confirmed the packaged GUI launches, but the installed application still needs hands-on Windows QA. Do not treat placeholders, the GitHub repository page, or concept mockups as actual application screenshots.
+Captured from Windows Actions [run 39014860198](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/actions/runs/39014860198), validated application commit `1af596b40d3bd0b5e439d7e78f5eab379e9e8889`. All documents, names and passwords used here are public synthetic test fixtures. No design mockup is presented as a real app screenshot.
 
-## Required captures
+| Capture | Provenance |
+| --- | --- |
+| [Installed window](screenshots/installed-window.png) | Actual installed PyInstaller EXE after a five-PDF batch; native titlebar and icon visible |
+| [Installed dashboard](screenshots/installed-batch.png) | Actual installed EXE client area after processing |
+| [Password groups](screenshots/password-groups.png) | Actual source GUI on Windows; synthetic password masked |
+| [Security analysis](screenshots/security-analysis.png) | Actual source GUI after real qpdf inspection |
+| [Batch results](screenshots/batch-results.png) | Actual source GUI after real qpdf processing |
+| [Run settings](screenshots/run-settings.png) | Actual source GUI, default settings |
+| [Installer wizard](screenshots/installer.png) | Actual Inno Setup wizard, before silent install QA |
 
-| Suggested filename | What to capture | Screenshot preparation |
-| --- | --- | --- |
-| `docs/screenshots/main-window.png` | RAR PDF Batch Unlocker main window, source/output fields, qpdf path | Use example folder paths only |
-| `docs/screenshots/security-analysis.png` | Analyzer results with `Unencrypted`, `PasswordRequired`, etc. | Use sample PDF filenames |
-| `docs/screenshots/password-groups.png` | Masked password field and Bank/Office/General groups | Never include real passwords or unmasked input |
-| `docs/screenshots/batch-results.png` | Progress bar, result table, success / failed statuses | Test on synthetic PDFs; crop/redact personal paths |
-| `docs/screenshots/installer.png` | Published Windows setup wizard | Show authentic installed release |
-| `docs/screenshots/release-download.png` | GitHub Releases page with v1.0.0 setup asset | Public repository page only |
+The desktop was set to 1920×1080 so screenshots are complete. Pages scroll vertically; result tables also scroll horizontally when necessary. Screenshot bytes were copied unchanged from the successful workflow artifact.
 
-## Screenshot workflow (no command line)
+## Reproduce
 
-1. Install the EXE from the **[verified v1.0.0 release](https://github.com/ruhulaminrevens/RAR-PDF-Batch-Unlocker/releases/tag/v1.0.0)**.
-2. Launch the app from Start Menu or Desktop shortcut.
-3. Use **only synthetic PDFs or documents without personal data** for screenshot demonstrations.
-4. Capture each UI state with Windows **Win + Shift + S**.
-5. Inspect images for confidential paths, usernames, bank/account/identity details, tokens and real passwords.
-6. Upload images to `docs/screenshots/` and link them from `README.md`.
+Install `requirements-build.txt` and `requirements-test.txt`. Make qpdf available on PATH. On a visible Windows desktop:
 
-## README gallery template (add only when files exist)
-
-```md
-### Application screenshots
-![Main workspace](docs/screenshots/main-window.png)
-![Security analysis results](docs/screenshots/security-analysis.png)
-![Password groups](docs/screenshots/password-groups.png)
-![Batch progress and CSV report](docs/screenshots/batch-results.png)
-![Windows installer](docs/screenshots/installer.png)
+```powershell
+python scripts/prepare_desktop.py
+python scripts/capture_screenshots.py
 ```
 
-## Manual Windows QA checklist
+The source capture script creates its own synthetic PDFs under `qa/demo`, runs analysis and unlocking, verifies hashes and captures actual pixels. Use a fresh QA workspace for a repeat run because outputs are intentionally never overwritten. `scripts/validate_windows.ps1` handles the actual installed EXE, shortcuts, icon resources and uninstall.
 
-- [ ] Install unsigned EXE on a clean Windows 10/11 x64 machine
-- [ ] Launch GUI without Python/PowerShell/qpdf installed separately
-- [ ] Verify bundled qpdf path resolves
-- [ ] Analyze security on unencrypted / known-password / unknown-password PDFs
-- [ ] Unlock known-password PDF(s) to a separate folder
-- [ ] Confirm outputs are unencrypted and originals preserved
-- [ ] Test failed-only CSV retry and output-skip behavior
-- [ ] Check optional Credential Locker (vault) only if intentionally enabled
-- [ ] Capture screenshots using only non-sensitive samples
-- [ ] Verify installer uninstall and shortcut cleanup
+## Manual checks remaining
 
-**Reminder:** Screenshots and test evidence must be real. Do not label untested controls or simulated outputs as validated behavior.
+Automated Windows Server runner testing is complete. A first run on the user's own Windows 10/11 machine remains useful for display scaling, antivirus/SmartScreen behavior and representative real PDFs. A 100–1,000 document performance benchmark is not claimed. Never commit private documents or real passwords.

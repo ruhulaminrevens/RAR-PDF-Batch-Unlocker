@@ -1,0 +1,7 @@
+{
+  "icon_resources": "extracted",
+  "uninstallation": "passed",
+  "installation": "passed",
+  "start_menu_shortcut": "passed",
+  "desktop_shortcut": "passed"
+}

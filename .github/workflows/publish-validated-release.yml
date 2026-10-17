@@ -1,0 +1,64 @@
+name: Publish validated installer
+on:
+  push:
+    branches: ['release/v1.*']
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    if: startsWith(github.ref, 'refs/heads/release/v1.')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify intentional release and successful Windows run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          from branding import VERSION
+          request=json.loads(Path('docs/releases/publish-request.json').read_text())
+          tag=request['tag']
+          assert tag=='v'+VERSION and tag!='v1.0.0'
+          assert os.environ['GITHUB_REF_NAME']=='release/'+tag
+          run=json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{request['validated_run_id']}"],text=True))
+          assert run['status']=='completed' and run['conclusion']=='success'
+          assert run['head_sha']==request['validated_sha'] and run['head_branch']=='main'
+          assert run['path']=='.github/workflows/windows-release.yml'
+          # The reviewed executable is promoted byte-for-byte; only documentation
+          # and workflow plumbing may differ from its validated source commit.
+          changed=subprocess.check_output(['git','diff','--name-only',request['validated_sha'],'HEAD'],text=True).splitlines()
+          assert all(p=='README.md' or p.startswith(('docs/','.github/workflows/')) for p in changed),changed
+          assert Path(f'docs/releases/{tag}.md').is_file()
+          with open(os.environ['GITHUB_ENV'],'a') as env:
+              for key,value in {'TAG':tag,'VALIDATED_RUN':request['validated_run_id'],'VALIDATED_SHA':request['validated_sha'],'ARTIFACT':request['artifact_name']}.items():env.write(f'{key}={value}\n')
+          PY
+          if gh release view "${GITHUB_REF_NAME#release/}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Existing releases must never be replaced.'; exit 1
+          fi
+      - name: Download the exact validated installer and check integrity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$VALIDATED_RUN" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT" --dir release
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          base=Path('release')
+          expected=(base/'SHA256SUMS.txt').read_text(encoding='utf-8-sig').split()[0]
+          actual=hashlib.sha256((base/'RAR-PDF-Batch-Unlocker-Setup.exe').read_bytes()).hexdigest()
+          assert actual==expected
+          assert os.environ['VALIDATED_SHA'] in (base/'VALIDATION.txt').read_text(encoding='utf-8-sig')
+          print('Validated installer SHA-256:',actual)
+          PY
+      - name: Publish a new release without replacing any asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" release/RAR-PDF-Batch-Unlocker-Setup.exe release/SHA256SUMS.txt release/VALIDATION.txt --target "$GITHUB_SHA" --title "RAR PDF Batch Unlocker $TAG" --notes-file "docs/releases/$TAG.md" --latest

@@ -1,0 +1,28 @@
+test_frozen_assets_use_bundle_directory (test_branding.BrandingTests.test_frozen_assets_use_bundle_directory) ... ok
+test_ico_has_all_native_sizes (test_branding.BrandingTests.test_ico_has_all_native_sizes) ... ok
+test_analyze_does_not_create_pdf (test_core.ExtendedTests.test_analyze_does_not_create_pdf) ... ok
+test_groups_and_attempt_limit (test_core.ExtendedTests.test_groups_and_attempt_limit) ... ok
+test_report_uses_relative_paths_and_never_password (test_core.ExtendedTests.test_report_uses_relative_paths_and_never_password) ... ok
+test_retry_report_filters_failures_and_traversal (test_core.ExtendedTests.test_retry_report_filters_failures_and_traversal) ... ok
+test_security_categories (test_core.ExtendedTests.test_security_categories) ... ok
+test_password_uses_stdin_not_arguments_or_environment (test_core.StdinPrivacyTest.test_password_uses_stdin_not_arguments_or_environment) ... ok
+test_cancel (test_core.TestCore.test_cancel) ... ok
+test_full_process_and_report_no_password (test_core.TestCore.test_full_process_and_report_no_password) ... ok
+test_scan_and_nested_rejection (test_core.TestCore.test_scan_and_nested_rejection) ... ok
+test_unknown_password_and_dry_run (test_core.TestCore.test_unknown_password_and_dry_run) ... ok
+test_all_controls_disable_during_run (test_gui.GuiTests.test_all_controls_disable_during_run) ... ok
+test_async_dry_run_no_output_and_search (test_gui.GuiTests.test_async_dry_run_no_output_and_search) ... ok
+test_invalid_mapping_and_nested_folders_rejected (test_gui.GuiTests.test_invalid_mapping_and_nested_folders_rejected) ... ok
+test_password_group_count_mask_and_snapshot (test_gui.GuiTests.test_password_group_count_mask_and_snapshot) ... ok
+test_retry_uses_last_report (test_gui.GuiTests.test_retry_uses_last_report) ... ok
+test_safe_stop_keeps_ui_busy_until_done (test_gui.GuiTests.test_safe_stop_keeps_ui_busy_until_done) ... ok
+test_source_snapshot_controls_result_paths (test_gui.GuiTests.test_source_snapshot_controls_result_paths) ... ok
+test_real_analyze_and_dry_run (test_integration.QpdfIntegration.test_real_analyze_and_dry_run) ... ok
+test_real_unlock_verify_retry_and_originals (test_integration.QpdfIntegration.test_real_unlock_verify_retry_and_originals) ... ok
+test_explicit_storage_only_and_validation (test_vault.VaultTests.test_explicit_storage_only_and_validation) ... ok
+test_windows_vault_round_trip (test_vault.VaultTests.test_windows_vault_round_trip) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 4.166s
+
+OK
