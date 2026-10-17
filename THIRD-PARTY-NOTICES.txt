@@ -28,4 +28,26 @@ keyring — MIT License (optional Windows Credential Locker support)
   and its dependencies jaraco.classes, jaraco.context, jaraco.functools,
   more-itertools (MIT) and pywin32-ctypes (BSD-3-Clause).
 
+PDF toolkit components (merge, split, convert, image <-> PDF):
+
+pypdfium2 — Apache-2.0 / BSD-3-Clause, bundling Google PDFium (BSD-3-Clause)
+  https://github.com/pypdfium2-team/pypdfium2  (page rendering to images)
+
+Pillow — MIT-CMU License
+  https://github.com/python-pillow/Pillow  (image handling)
+
+img2pdf — LGPL-3.0
+  https://gitlab.mister-muffin.de/josch/img2pdf  (lossless image-to-PDF)
+
+pdfplumber — MIT License, with pdfminer.six (MIT)
+  https://github.com/jsvine/pdfplumber  (text and table extraction)
+
+python-docx — MIT License
+  https://github.com/python-openxml/python-docx  (Word draft export)
+
+openpyxl — MIT License
+  https://foss.heptapod.net/openpyxl/openpyxl  (Excel draft export)
+
+PyMuPDF is deliberately NOT used, to avoid its AGPL terms in this distributed build.
+
 No component sends data over the network. The application works offline.

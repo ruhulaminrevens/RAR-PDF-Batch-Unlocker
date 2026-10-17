@@ -164,6 +164,133 @@ class App(ModernUI, tk.Tk):
     def _open_report(self):self._open_path(self.last_report)
     def _open_output(self):self._open_path(self.last_output or self.destination.get())
 
+    # ---- PDF tools ---------------------------------------------------------
+    def _tool_pick_file(self,var):
+        v=filedialog.askopenfilename(filetypes=[('PDF files','*.pdf'),('All files','*')])
+        if v:var.set(v)
+
+    def _tool_add(self,box,kind):
+        if self.busy:return
+        if kind=='img':
+            types=[('Images','*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp'),('All files','*')]
+        else:
+            types=[('PDF files','*.pdf'),('All files','*')]
+        chosen=filedialog.askopenfilenames(title='Add files',filetypes=types)
+        known={os.path.normcase(os.path.abspath(p)) for p in box._paths}
+        for f in chosen:
+            key=os.path.normcase(os.path.abspath(f))
+            if key not in known:
+                box._paths.append(f);known.add(key);box.insert('end',os.path.basename(f))
+
+    def _tool_remove(self,box):
+        if self.busy:return
+        for i in reversed(box.curselection()):
+            del box._paths[i];box.delete(i)
+
+    def _tool_clear(self,box):
+        if self.busy:return
+        box._paths.clear();box.delete(0,'end')
+
+    def _tool_move(self,box,delta):
+        if self.busy:return
+        sel=box.curselection()
+        if not sel:return
+        i=sel[0];j=i+delta
+        if not 0<=j<len(box._paths):return
+        box._paths[i],box._paths[j]=box._paths[j],box._paths[i]
+        name_i=box.get(i);box.delete(i);box.insert(j,name_i)
+        box.selection_clear(0,'end');box.selection_set(j);box.activate(j)
+
+    def _ask_output_file(self,default,types):
+        v=filedialog.asksaveasfilename(defaultextension=types[0][1].split('*')[-1],initialfile=default,filetypes=types)
+        return Path(v) if v else None
+
+    def _ask_output_dir(self):
+        v=filedialog.askdirectory(title='Choose an output folder')
+        return Path(v) if v else None
+
+    def _run_tool(self,make_call,open_target):
+        """make_call(password) -> toolkit.Result. Retries once with a prompted password
+        if the input turns out to be protected."""
+        if self.busy:return
+        self._set_busy(True);self.stop_btn.configure(state='disabled');self.tool_status.set('Working…')
+        def work():
+            import toolkit
+            try:
+                try:
+                    result=make_call(None)
+                except toolkit.PasswordNeeded:
+                    self.events.put(('tool_need_pw',{'make_call':make_call,'open':open_target}));return
+                self.events.put(('tool_done',{'result':result,'open':open_target}))
+            except toolkit.ToolkitError as exc:
+                self.events.put(('tool_error',str(exc)))
+            except Exception as exc:
+                import diagnostics;diagnostics.log_exception(type(exc),exc,exc.__traceback__,'pdf-tool')
+                self.events.put(('tool_error',f'Unexpected error: {type(exc).__name__}'))
+        self.worker=threading.Thread(target=work,daemon=True);self.worker.start()
+
+    def _tool_merge(self):
+        box=self.merge_list
+        if len(box._paths)<2:
+            messagebox.showinfo('Merge PDFs','Add at least two PDFs to merge.');return
+        out=self._ask_output_file('merged.pdf',[('PDF','*.pdf')])
+        if not out:return
+        import toolkit
+        self._run_tool(lambda pw:toolkit.merge_pdfs([Path(p) for p in box._paths],out),out.parent)
+
+    def _tool_split(self,mode):
+        src=self.split_input.get().strip()
+        if not src:
+            messagebox.showinfo('Split & organize','Choose a source PDF first.');return
+        import toolkit
+        rotate=int(self.split_rotate.get())
+        if mode=='each':
+            out=self._ask_output_dir()
+            if not out:return
+            self._run_tool(lambda pw:toolkit.split_pdf(Path(src),out,password=pw),out)
+        else:
+            spec=self.split_pages.get().strip()
+            if not spec:
+                messagebox.showinfo('Export selected pages','Enter page numbers, e.g. 1,3-5.');return
+            out=self._ask_output_file(Path(src).stem+'-pages.pdf',[('PDF','*.pdf')])
+            if not out:return
+            def call(pw):
+                n=toolkit.page_count(Path(src),pw)
+                keep=toolkit.parse_page_spec(spec,n)
+                rot={p:rotate for p in keep} if rotate else None
+                return toolkit.organize_pdf(Path(src),out,keep=keep,rotations=rot,password=pw)
+            self._run_tool(call,out.parent)
+
+    def _tool_img2pdf(self):
+        box=self.img_list
+        if not box._paths:
+            messagebox.showinfo('Images → PDF','Add at least one image.');return
+        out=self._ask_output_file('images.pdf',[('PDF','*.pdf')])
+        if not out:return
+        import toolkit
+        self._run_tool(lambda pw:toolkit.images_to_pdf([Path(p) for p in box._paths],out),out.parent)
+
+    def _tool_pdf2img(self):
+        src=self.rimg_input.get().strip()
+        if not src:
+            messagebox.showinfo('PDF → images','Choose a source PDF first.');return
+        out=self._ask_output_dir()
+        if not out:return
+        import toolkit
+        fmt=self.rimg_fmt.get();dpi=int(self.rimg_dpi.get())
+        self._run_tool(lambda pw:toolkit.pdf_to_images(Path(src),out,fmt=fmt,dpi=dpi,password=pw),out)
+
+    def _tool_convert(self,kind):
+        src=self.conv_input.get().strip()
+        if not src:
+            messagebox.showinfo('Convert','Choose a source PDF first.');return
+        ext='.'+kind
+        out=self._ask_output_file(Path(src).stem+ext,[(kind.upper(),'*'+ext)])
+        if not out:return
+        import toolkit
+        fn=toolkit.pdf_to_docx if kind=='docx' else toolkit.pdf_to_xlsx
+        self._run_tool(lambda pw:fn(Path(src),out,password=pw),out.parent)
+
     def _browse(self,var,folder):
         v=filedialog.askdirectory() if folder else filedialog.askopenfilename(filetypes=[('Executable','*.exe'),('All files','*')])
         if v:var.set(v)
@@ -380,6 +507,27 @@ class App(ModernUI, tk.Tk):
                     self._done();self.status.set('Processing could not finish. Review the error and your settings.')
                     diagnostics.log_event('Run error shown to user')
                     messagebox.showerror('Processing error',p)
+                elif kind=='tool_done':
+                    self._done();r=p['result']
+                    outs=r.outputs;where=outs[0].parent if outs else p['open']
+                    self.tool_status.set(f'Done — {r.note}. Saved to: {where}')
+                    if messagebox.askyesno('Finished',f'{r.note}.\n\nOpen the output folder?'):self._open_path(str(p['open']))
+                elif kind=='tool_need_pw':
+                    pw=simpledialog.askstring('Protected PDF','This PDF needs its open password:',show='●',parent=self)
+                    if not pw:
+                        self._done();self.tool_status.set('Cancelled — the PDF is password-protected.')
+                    else:
+                        diagnostics.remember_secret(pw)
+                        make=p['make_call'];target=p['open']
+                        def work():
+                            import toolkit
+                            try:self.events.put(('tool_done',{'result':make(pw),'open':target}))
+                            except toolkit.ToolkitError as exc:self.events.put(('tool_error',str(exc)))
+                            except Exception as exc:
+                                diagnostics.log_exception(type(exc),exc,exc.__traceback__,'pdf-tool');self.events.put(('tool_error',f'Unexpected error: {type(exc).__name__}'))
+                        self.worker=threading.Thread(target=work,daemon=True);self.worker.start()
+                elif kind=='tool_error':
+                    self._done();self.tool_status.set('Could not finish: '+p);messagebox.showerror('PDF tools',p)
         except queue.Empty:pass
         if self.busy:self._update_timing()
         self.poll_id=self.after(100,self._poll)

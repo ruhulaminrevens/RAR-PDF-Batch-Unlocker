@@ -25,6 +25,10 @@ class ToolkitError(Exception):
     """A clear, user-facing problem with an operation."""
 
 
+class PasswordNeeded(ToolkitError):
+    """The input is protected and no (or no correct) open password was supplied yet."""
+
+
 @dataclass
 class Result:
     outputs: list[Path] = field(default_factory=list)
@@ -69,14 +73,18 @@ def open_reader(path: Path, password: str | None = None) -> PdfReader:
         raise ToolkitError(f'"{Path(path).name}" could not be read as a PDF ({type(exc).__name__}).') from None
     if reader.is_encrypted:
         if not password:
-            raise ToolkitError(f'"{Path(path).name}" is password-protected. Unlock it first (Batch workspace), '
-                               'or supply its open password.')
+            raise PasswordNeeded(f'"{Path(path).name}" is password-protected. Enter its open password to continue.')
         try:
             if reader.decrypt(password) == 0:
                 raise ToolkitError(f'The supplied password did not open "{Path(path).name}".')
         except (PdfReadError, FileNotDecryptedError, NotImplementedError) as exc:
             raise ToolkitError(f'"{Path(path).name}" could not be decrypted ({type(exc).__name__}).') from None
     return reader
+
+
+def _require_openable(path: Path, password: str | None):
+    """Uniform protection check (via pypdf) before an engine opens the file its own way."""
+    open_reader(Path(path), password)
 
 
 def _strip_protection_only(writer: PdfWriter):
@@ -216,10 +224,11 @@ def pdf_to_images(input: Path, output_dir: Path, fmt: str = 'png', dpi: int = 15
         raise ToolkitError(f'Unsupported image format: {fmt}')
     if not 36 <= dpi <= 600:
         raise ToolkitError('DPI must be between 36 and 600.')
+    _require_openable(Path(input), password)
     try:
         doc = pdfium.PdfDocument(_fs(Path(input)), password=password or None)
-    except pdfium.PdfiumError as exc:
-        raise ToolkitError(f'Could not open "{Path(input).name}": needs the correct password, or it is damaged.') from None
+    except pdfium.PdfiumError:
+        raise ToolkitError(f'Could not open "{Path(input).name}": it may be damaged.') from None
     try:
         n = len(doc)
         stem = Path(input).stem
@@ -248,6 +257,7 @@ def pdf_to_docx(input: Path, output: Path, password: str | None = None) -> Resul
     import pdfplumber
     from docx import Document
 
+    _require_openable(Path(input), password)
     document = Document()
     empty = True
     with pdfplumber.open(_fs(Path(input)), password=password or '') as pdf:
@@ -269,8 +279,8 @@ def pdf_to_xlsx(input: Path, output: Path, password: str | None = None) -> Resul
     """Extract text-based tables to a worksheet per table. Scanned PDFs yield nothing."""
     import pdfplumber
     from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
 
+    _require_openable(Path(input), password)
     wb = Workbook()
     wb.remove(wb.active)
     count = 0

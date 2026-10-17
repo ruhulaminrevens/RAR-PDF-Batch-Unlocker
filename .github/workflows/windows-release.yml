@@ -24,7 +24,7 @@ jobs:
       - name: Prepare visible desktop for real screenshots
         run: python scripts/prepare_desktop.py
       - name: Compile Python sources
-        run: python -m compileall -q app.py ui.py branding.py core.py reports.py diagnostics.py vault.py scripts tests
+        run: python -m compileall -q app.py ui.py branding.py core.py reports.py diagnostics.py toolkit.py vault.py scripts tests
       - name: Build branded GUI with checksum-verified qpdf
         shell: pwsh
         run: ./scripts/build_windows.ps1
