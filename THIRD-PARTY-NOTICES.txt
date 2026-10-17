@@ -1,0 +1,31 @@
+RAR PDF Batch Unlocker — third-party components
+================================================
+
+This application bundles the following components. Each remains under its own
+licence; full licence texts shipped by the upstream projects are included in the
+installation folder where the upstream archive provides them.
+
+qpdf 12.4.2 (Windows x64 MinGW build) — Apache License 2.0
+  https://github.com/qpdf/qpdf
+  Bundled unmodified in the "qpdf" folder, including the runtime libraries
+  distributed in the official archive. Upstream licence and notice files are
+  copied next to it ("qpdf" folder). The archive SHA-256 is checked at build
+  time and every engine file is listed in qpdf/qpdf-manifest.json, which the
+  application re-checks at start-up.
+
+Python 3.12 runtime — Python Software Foundation License Version 2
+  https://www.python.org/
+
+Tcl/Tk 8.6 (tkinter) — Tcl/Tk licence (BSD-style)
+  https://www.tcl.tk/software/tcltk/license.html
+
+PyInstaller bootloader — GPL 2.0 with the PyInstaller bootloader exception
+  (allows distribution of the bundled application under any licence)
+  https://pyinstaller.org/
+
+keyring — MIT License (optional Windows Credential Locker support)
+  https://github.com/jaraco/keyring
+  and its dependencies jaraco.classes, jaraco.context, jaraco.functools,
+  more-itertools (MIT) and pywin32-ctypes (BSD-3-Clause).
+
+No component sends data over the network. The application works offline.

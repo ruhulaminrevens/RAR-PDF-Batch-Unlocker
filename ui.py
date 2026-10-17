@@ -23,8 +23,11 @@ STATUS_LABELS = {
     'CopiedUnencrypted':'Copied unencrypted', 'SkippedExisting':'Output exists',
     'InspectionFailed':'Inspection failed', 'VerificationFailed':'Verification failed',
     'InvalidPDF':'Invalid PDF', 'Timeout':'Timed out', 'Error':'Error',
-    'Cancelled':'Cancelled', 'DryRun':'Dry run',
+    'Cancelled':'Cancelled', 'DryRun':'Dry run', 'DecryptFailed':'Rebuild failed',
+    'FileLocked':'File locked', 'AccessDenied':'Access denied', 'DiskFull':'Disk full',
+    'PathTooLong':'Path too long', 'SourceMissing':'Source missing', 'OutputConflict':'Name conflict',
 }
+LABEL_TO_STATUS = {v: k for k, v in STATUS_LABELS.items()}
 
 
 class ScrollPage(ttk.Frame):
@@ -42,7 +45,12 @@ class ScrollPage(ttk.Frame):
 
 
 class ModernUI:
+    def px(self, value):
+        """Scale a 96-DPI pixel size to the current Windows display scaling."""
+        return int(round(value * self.ui_scale))
+
     def _build(self):
+        self.ui_scale = max(1.0, float(self.tk.call('tk', 'scaling')) * 72 / 96)
         self.configure(bg=BG)
         style=ttk.Style(self);style.theme_use('clam')
         style.configure('.',font=('Segoe UI',10),background=BG,foreground=TEXT)
@@ -69,7 +77,7 @@ class ModernUI:
         style.map('TCombobox',fieldbackground=[('readonly',INSET),('disabled','#131f32')],foreground=[('readonly',TEXT),('disabled','#8393ab')],selectbackground=[('readonly',INSET)],selectforeground=[('readonly',TEXT)])
         style.configure('TCheckbutton',background=SURFACE,foreground=TEXT,indicatorbackground=INSET,indicatorforeground=CYAN,padding=(0,6))
         style.map('TCheckbutton',background=[('active',SURFACE)],foreground=[('disabled','#8393ab')],indicatorbackground=[('selected',BLUE)])
-        style.configure('Treeview',background=INSET,fieldbackground=INSET,foreground=TEXT,rowheight=34,borderwidth=0,bordercolor=BORDER,lightcolor=BORDER,darkcolor=BORDER,font=('Segoe UI',10))
+        style.configure('Treeview',background=INSET,fieldbackground=INSET,foreground=TEXT,rowheight=self.px(30),borderwidth=0,bordercolor=BORDER,lightcolor=BORDER,darkcolor=BORDER,font=('Segoe UI',10))
         style.map('Treeview',background=[('selected','#224b75')],foreground=[('selected','#ffffff')])
         style.configure('Treeview.Heading',background='#1b2b43',foreground=MUTED,font=('Segoe UI',9,'bold'),padding=(9,10),relief='flat')
         style.map('Treeview.Heading',background=[('active','#263d5b')])
@@ -81,7 +89,7 @@ class ModernUI:
         self.option_add('*TCombobox*Listbox.selectForeground',TEXT)
         apply_window_icon(self)
         self.mutables=[];self.pages={};self.nav={}
-        sidebar=tk.Frame(self,bg=INSET,width=210);sidebar.pack(side='left',fill='y');sidebar.pack_propagate(False)
+        sidebar=tk.Frame(self,bg=INSET,width=self.px(210));sidebar.pack(side='left',fill='y');sidebar.pack_propagate(False)
         self.logo=tk.PhotoImage(file=str(asset_path('app-48.png')))
         tk.Label(sidebar,image=self.logo,bg=INSET).pack(anchor='w',padx=20,pady=(25,8))
         tk.Label(sidebar,text='RAR PDF',font=('Segoe UI',20,'bold'),fg=TEXT,bg=INSET).pack(anchor='w',padx=22)
@@ -117,14 +125,14 @@ class ModernUI:
     def _heading(self,parent,eyebrow,title,subtitle):
         ttk.Label(parent,text=eyebrow,foreground=CYAN,font=('Segoe UI',9,'bold')).pack(anchor='w')
         ttk.Label(parent,text=title,style='Title.TLabel').pack(anchor='w',pady=(6,4))
-        ttk.Label(parent,text=subtitle,style='Muted.TLabel',wraplength=810).pack(anchor='w',pady=(0,18))
+        ttk.Label(parent,text=subtitle,style='Muted.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(0,18))
 
     def _card(self,parent,title,subtitle='',**pack):
         shell=tk.Frame(parent,bg=SURFACE,highlightbackground=BORDER,highlightthickness=1)
         shell.pack(fill='x',pady=(0,12),**pack)
         body=ttk.Frame(shell,style='Card.TFrame',padding=16);body.pack(fill='both',expand=True)
         ttk.Label(body,text=title,style='Section.TLabel').pack(anchor='w')
-        if subtitle:ttk.Label(body,text=subtitle,style='Note.TLabel',wraplength=810).pack(anchor='w',pady=(4,12))
+        if subtitle:ttk.Label(body,text=subtitle,style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(4,12))
         return body
 
     def _workspace(self,parent):
@@ -139,19 +147,24 @@ class ModernUI:
             var=tk.StringVar(value='—');self.metric_vars[key]=var
             tk.Label(card,textvariable=var,font=('Segoe UI',26,'bold'),bg=SURFACE,fg=color).pack(anchor='w',padx=14,pady=(9,0))
             tk.Label(card,text=label,font=('Segoe UI',8,'bold'),bg=SURFACE,fg=MUTED).pack(anchor='w',padx=14,pady=(2,12))
-        paths=self._card(parent,'01   Folders & engine','Select separate source and output folders. Subfolders are preserved automatically.')
+        paths=self._card(parent,'01   Inputs & output','Choose a source folder, add individual PDFs, or both. Output must be a separate folder; subfolders are preserved.')
         self.path_entries={}
-        for label,var,is_folder in [('Source folder',self.source,True),('Output folder',self.destination,True),('qpdf engine',self.qpdf,False)]:
+        for label,var,is_folder in [('Source folder',self.source,True),('Output folder',self.destination,True)]:
             row=ttk.Frame(paths,style='Card.TFrame');row.pack(fill='x',pady=4)
             ttk.Label(row,text=label,width=14,style='Card.TLabel').pack(side='left')
             ent=self._remember(ttk.Entry(row,textvariable=var));ent.pack(side='left',fill='x',expand=True,padx=(0,8));self.path_entries[label]=ent
             self._button(row,'Browse',lambda v=var,f=is_folder:self._browse(v,f)).pack(side='right')
+        row=ttk.Frame(paths,style='Card.TFrame');row.pack(fill='x',pady=4)
+        ttk.Label(row,text='Single PDFs',width=14,style='Card.TLabel').pack(side='left')
+        self._button(row,'Clear',self._clear_files).pack(side='right')
+        self._button(row,'Add PDFs…',self._add_files).pack(side='right',padx=(0,8))
+        ttk.Label(row,textvariable=self.files_summary,style='Note.TLabel',width=1).pack(side='left',fill='x',expand=True,padx=(0,8))
         row=ttk.Frame(paths,style='Card.TFrame');row.pack(fill='x',pady=(9,0))
         self.scan_btn=self._button(row,'Scan filenames',self._scan);self.scan_btn.pack(side='left')
         self.analyze_btn=self._button(row,'Analyze security',lambda:self._start(True));self.analyze_btn.pack(side='left',padx=8)
         self._button(row,'Manage passwords  →',lambda:self._navigate('passwords'),mutable=False).pack(side='right')
         run=self._card(parent,'02   Run your batch')
-        ttk.Label(run,textvariable=self.mode_summary,style='Note.TLabel',wraplength=810).pack(anchor='w',pady=(8,10))
+        ttk.Label(run,textvariable=self.mode_summary,style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(8,10))
         row=ttk.Frame(run,style='Card.TFrame');row.pack(fill='x')
         self.start_btn=self._button(row,'Unlock batch   →',lambda:self._start(False),primary=True);self.start_btn.pack(side='left')
         self.stop_btn=ttk.Button(row,text='Stop safely',command=self._stop,state='disabled',style='Danger.TButton');self.stop_btn.pack(side='left',padx=8)
@@ -166,7 +179,7 @@ class ModernUI:
     def _progress(self,parent):
         ttk.Progressbar(parent,mode='determinate',maximum=100,variable=self.progress).pack(fill='x',pady=(17,10))
         row=ttk.Frame(parent,style='Card.TFrame');row.pack(fill='x')
-        ttk.Label(row,textvariable=self.status,style='Card.TLabel',wraplength=660).pack(side='left',anchor='w')
+        ttk.Label(row,textvariable=self.status,style='Card.TLabel',wraplength=self.px(600)).pack(side='left',anchor='w')
         ttk.Label(row,textvariable=self.progress_text,style='Note.TLabel').pack(side='right')
         ttk.Label(parent,textvariable=self.timing,style='Note.TLabel').pack(anchor='w',pady=(7,0))
 
@@ -178,6 +191,7 @@ class ModernUI:
         self.groupbox.bind('<<ComboboxSelected>>',lambda e:self._update_count())
         self._button(row,'New group',self._new_group).pack(side='left',padx=8)
         self._button(row,'Clear group',self._clear).pack(side='right')
+        self._button(row,'Delete group',self._delete_group).pack(side='right',padx=8)
         ttk.Label(card,textvariable=self.pw_count,style='Note.TLabel').pack(anchor='w',pady=(12,6))
         row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x')
         self.pw_entry=self._remember(ttk.Entry(row,show='●'));self.pw_entry.pack(side='left',fill='x',expand=True)
@@ -195,16 +209,16 @@ class ModernUI:
         row=ttk.Frame(vault,style='Card.TFrame');row.pack(fill='x')
         for label,fn in [('Save entered password',self._save_vault),('Load saved password',self._load_vault),('Delete saved password',self._delete_vault)]:
             self._button(row,label,fn).pack(side='left',padx=(0,8))
-        ttk.Label(vault,text='Uses your Windows account’s credential store. No password file is created by this app.',style='Note.TLabel',wraplength=800).pack(anchor='w',pady=(12,0))
+        ttk.Label(vault,text='Uses your Windows account’s credential store. No password file is created by this app.',style='Note.TLabel',wraplength=self.px(740)).pack(anchor='w',pady=(12,0))
 
     def _make_table(self,parent,compact=False,height=12):
         container=ttk.Frame(parent,style='Card.TFrame');container.pack(fill='both',expand=True,pady=(10,0))
         cols=('status','filename') if compact else ('status','filename','security','group','attempts','seconds')
         table=ttk.Treeview(container,columns=cols,show='headings',height=height)
-        widths={'status':175,'filename':300,'security':165,'group':110,'attempts':85,'seconds':75}
+        widths={k:self.px(v) for k,v in {'status':165,'filename':300,'security':160,'group':110,'attempts':85,'seconds':80}.items()}
         for key in cols:
-            table.heading(key,text={'filename':'PDF FILE  /  RELATIVE PATH','seconds':'TIME (s)'}.get(key,key.upper()))
-            table.column(key,width=widths[key],minwidth=300 if key=='filename' else widths[key],stretch=(key=='filename'),anchor='center' if key in ('attempts','seconds') else 'w')
+            table.heading(key,text={'filename':'PDF FILE  /  RELATIVE PATH','seconds':'TIME (s)'}.get(key,key.upper()),command=lambda k=key,t=table:self._sort_table(t,k))
+            table.column(key,width=widths[key],minwidth=self.px(220) if key=='filename' else widths[key],stretch=(key=='filename'),anchor='center' if key in ('attempts','seconds') else 'w')
         table.grid(row=0,column=0,sticky='nsew');container.columnconfigure(0,weight=1);container.rowconfigure(0,weight=1)
         vbar=ttk.Scrollbar(container,orient='vertical',command=table.yview);vbar.grid(row=0,column=1,sticky='ns')
         hbar=ttk.Scrollbar(container,orient='horizontal',command=table.xview);hbar.grid(row=1,column=0,sticky='ew')
@@ -221,48 +235,58 @@ class ModernUI:
         row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x',pady=(14,0))
         ttk.Label(row,text='Search',style='Card.TLabel').pack(side='left',padx=(0,6))
         ttk.Entry(row,textvariable=self.search).pack(side='left',fill='x',expand=True,padx=(0,10))
-        self.filterbox=ttk.Combobox(row,textvariable=self.filter_status,values=['All statuses',*STATUS_LABELS],state='readonly',width=24);self.filterbox.pack(side='right')
+        self.filterbox=ttk.Combobox(row,textvariable=self.filter_status,values=['All statuses','Needs attention',*STATUS_LABELS],state='readonly',width=24);self.filterbox.pack(side='right')
         self.filterbox.bind('<<ComboboxSelected>>',lambda e:self._filter_rows())
         self.table=self._make_table(card)
-        ttk.Label(card,textvariable=self.result_detail,style='Note.TLabel',wraplength=830).pack(anchor='w',pady=(10,0))
+        ttk.Label(card,textvariable=self.result_detail,style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(10,0))
         row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x',pady=(12,0))
         self.report_btn=self._button(row,'Open CSV report',self._open_report,mutable=False);self.report_btn.pack(side='left')
-        self.retry_btn=self._button(row,'Retry failures from last report',self._use_last_report);self.retry_btn.pack(side='left',padx=8)
-        self._button(row,'Open output folder',self._open_output,mutable=False).pack(side='right')
-        ttk.Label(card,textvariable=self.report_text,style='Note.TLabel',wraplength=830).pack(anchor='w',pady=(12,0))
+        self._button(row,'Open HTML summary',self._open_html,mutable=False).pack(side='left',padx=8)
+        self._button(row,'Open output folder',self._open_output,mutable=False).pack(side='left')
+        row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x',pady=(8,0))
+        self.retry_btn=self._button(row,'Retry failures from last report',self._use_last_report);self.retry_btn.pack(side='left')
+        ttk.Label(card,textvariable=self.report_text,style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(12,0))
         self.search.trace_add('write',lambda *a:self._filter_rows())
 
     def _settings_page(self,parent):
         self._heading(parent,'CONTROLLED EXECUTION','Run settings','Set a small file limit for a first pass, then process the full batch when you are ready.')
         card=self._card(parent,'Processing limits','The empty-password check counts as an attempt. No brute-force or generated password list is used.')
-        for label,var,hint in [('File limit',self.limit,'0 = all matching PDFs'),('Attempts per PDF',self.max_attempts,'1–1,000; default 30')]:
+        for label,var,hint in [('File limit',self.limit,'0 = all matching PDFs'),('Attempts per PDF',self.max_attempts,'1–1,000; default 30'),('Timeout per qpdf step (s)',self.timeout,'1–3,600; raise for very large PDFs'),('Parallel workers',self.workers,'1–16; files processed at the same time')]:
             row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x',pady=6)
             ttk.Label(row,text=label,width=22,style='Card.TLabel').pack(side='left')
             self._remember(ttk.Entry(row,textvariable=var,width=10)).pack(side='left',padx=(0,15))
             ttk.Label(row,text=hint,style='Note.TLabel').pack(side='left')
         card=self._card(parent,'Mode & privacy')
-        for label,var in [('Dry run — list matching files; test no passwords and write no files',self.dry_run),('Copy already unencrypted PDFs into the output folder',self.include_unencrypted),('Use relative file paths in CSV reports (recommended)',self.relative_reports)]:
+        for label,var in [('Dry run — list matching files; test no passwords and write no files',self.dry_run),('Copy already unencrypted PDFs into the output folder',self.include_unencrypted),('Use relative file paths in CSV reports (recommended)',self.relative_reports),('Also write a readable HTML summary',self.html_summary)]:
             self._remember(ttk.Checkbutton(card,text=label,variable=var)).pack(anchor='w',pady=2)
-        ttk.Label(card,text='Analyze security inspects PDFs and writes a CSV, without creating unlocked PDFs.\nDry run takes priority when enabled. Existing output files are always preserved.',style='Note.TLabel',wraplength=810).pack(anchor='w',pady=(8,0))
-        card=self._card(parent,'Retry failed records','Choose a report from the same source folder. Successful and out-of-folder records are excluded.')
+        ttk.Label(card,text='Analyze security inspects PDFs and writes a CSV, without creating unlocked PDFs.\nDry run takes priority when enabled. Existing output files are always preserved.',style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(8,0))
+        card=self._card(parent,'Continue from a previous report','Retry processes only failed records. Resume skips verified, finished files and processes everything else, including files an interrupted run never reached. Use the same source selection as that run.')
+        row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x',pady=(0,8))
+        for text,value in [('Retry failed only','retry'),('Resume interrupted run','resume')]:
+            self._remember(ttk.Radiobutton(row,text=text,value=value,variable=self.continue_mode)).pack(side='left',padx=(0,16))
         row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x')
         self._remember(ttk.Entry(row,textvariable=self.retry_report)).pack(side='left',fill='x',expand=True)
         self._button(row,'Choose CSV',self._select_report).pack(side='left',padx=8)
         self._button(row,'Clear',lambda:self.retry_report.set('')).pack(side='left')
+        card=self._card(parent,'qpdf engine','The bundled engine is used automatically. Change this only to use another qpdf installation.')
+        row=ttk.Frame(card,style='Card.TFrame');row.pack(fill='x')
+        ent=self._remember(ttk.Entry(row,textvariable=self.qpdf));ent.pack(side='left',fill='x',expand=True,padx=(0,8));self.path_entries['qpdf engine']=ent
+        self._button(row,'Browse',lambda:self._browse(self.qpdf,False)).pack(side='right')
+        ttk.Label(card,textvariable=self.engine_text,style='Note.TLabel',wraplength=self.px(740)).pack(anchor='w',pady=(8,0))
         self._button(parent,'Back to batch workspace  →',lambda:self._navigate('workspace'),primary=True,mutable=False).pack(anchor='w')
-        for var in (self.dry_run,self.include_unencrypted,self.relative_reports,self.limit,self.max_attempts,self.retry_report):var.trace_add('write',lambda *a:self._update_mode())
+        for var in (self.dry_run,self.include_unencrypted,self.relative_reports,self.limit,self.max_attempts,self.retry_report,self.continue_mode,self.workers):var.trace_add('write',lambda *a:self._update_mode())
         self._update_mode()
 
     def _help_page(self,parent):
         self._heading(parent,'RAR TOOLS',f'RAR PDF Batch Unlocker {VERSION}','A local Windows workspace for authorized PDF analysis and batch unlocking.')
         card=self._card(parent,'A simple workflow')
         text='1. Choose separate source and output folders; confirm the qpdf engine path.\n2. Scan filenames or analyze security to understand the batch.\n3. Add your known passwords, and map folders to groups if needed.\n4. Check run settings, then unlock. Review the results and CSV report.'
-        ttk.Label(card,text=text,style='Card.TLabel',wraplength=810,justify='left').pack(anchor='w',pady=12)
+        ttk.Label(card,text=text,style='Card.TLabel',wraplength=self.px(760),justify='left').pack(anchor='w',pady=12)
         card=self._card(parent,'Built around your originals')
-        ttk.Label(card,text='Original files are never intentionally overwritten. Existing outputs are skipped, and decrypted outputs are checked with qpdf before being accepted. Passwords go to qpdf through stdin, never command-line arguments.\n\nUnlocked documents remain sensitive. Keep the output folder access-controlled. Rewriting a digitally signed PDF can invalidate its signature.',style='Note.TLabel',wraplength=810,justify='left').pack(anchor='w',pady=10)
+        ttk.Label(card,text='Original files are never intentionally overwritten. Existing outputs are skipped, and decrypted outputs are checked with qpdf before being accepted. Passwords go to qpdf through stdin, never command-line arguments.\n\nUnlocked documents remain sensitive. Keep the output folder access-controlled. Rewriting a digitally signed PDF can invalidate its signature.',style='Note.TLabel',wraplength=self.px(760),justify='left').pack(anchor='w',pady=10)
         self._button(card,'Read password recovery guidance',self._hints,mutable=False).pack(anchor='w')
         card=self._card(parent,'What this app can do')
-        ttk.Label(card,text='Use only PDFs and passwords you are authorized to access. A strong unknown opening password cannot be bypassed by qpdf. There is no online upload, password guessing service or persistent history database in this app.\n\nThe Windows build is unsigned unless separately signed with an Authenticode certificate.',style='Note.TLabel',wraplength=810,justify='left').pack(anchor='w',pady=10)
+        ttk.Label(card,text='Use only PDFs and passwords you are authorized to access. A strong unknown opening password cannot be bypassed by qpdf. There is no online upload, password guessing service or persistent history database in this app.\n\nThe Windows build is unsigned unless separately signed with an Authenticode certificate.',style='Note.TLabel',wraplength=self.px(760),justify='left').pack(anchor='w',pady=10)
 
     def _navigate(self,key):
         if hasattr(self,'pw_entry'):
@@ -286,5 +310,6 @@ class ModernUI:
     def _update_mode(self):
         mode='Dry run · no file changes' if self.dry_run.get() else 'Unlock using supplied passwords'
         limit=self.limit.get().strip()
-        self.mode_summary.set(f"{mode}  •  {'All files' if limit=='0' else 'Limit: '+limit}  •  {self.max_attempts.get()} attempts / PDF"+('  •  Failed-only retry' if self.retry_report.get() else ''))
+        cont=('  •  Resume from report' if self.continue_mode.get()=='resume' else '  •  Failed-only retry') if self.retry_report.get() else ''
+        self.mode_summary.set(f"{mode}  •  {'All files' if limit=='0' else 'Limit: '+limit}  •  {self.max_attempts.get()} attempts / PDF  •  {self.workers.get()} worker(s)"+cont)
         if hasattr(self,'start_btn'):self.start_btn.configure(text='Start dry run   →' if self.dry_run.get() else 'Unlock batch   →')

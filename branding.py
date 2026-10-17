@@ -4,7 +4,7 @@ import sys
 
 APP_NAME = 'RAR PDF Batch Unlocker'
 APP_ID = 'RARTools.PDFBatchUnlocker'
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 
 
 def asset_path(name):
