@@ -106,7 +106,7 @@ class ExtendedTests(unittest.TestCase):
             w.writerow({'source':'Bank/statement.pdf','status':'Unlocked'})
         self.settings.failed_report=str(rp)
         _,_,files=core.scan(self.settings)
-        self.assertEqual(files,[self.src/'Bank'/'statement.pdf'])
+        self.assertEqual([p.resolve() for p in files],[(self.src/'Bank'/'statement.pdf').resolve()])
 
     def test_report_uses_relative_paths_and_never_password(self):
         def fake(qpdf,args,password=None,timeout=60):
