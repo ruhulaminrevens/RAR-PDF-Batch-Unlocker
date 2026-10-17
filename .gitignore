@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+build/
+dist/
+release/
+*.spec
+.venv/
+*.csv
+qpdf.zip
+qpdf-extract/
+bundled-qpdf/
