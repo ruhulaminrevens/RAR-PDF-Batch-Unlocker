@@ -141,3 +141,52 @@ def icon_button(icon_name: str, color: str, text: str, kind=None, on_click=None)
     if on_click:
         btn.clicked.connect(on_click)
     return btn
+
+
+# ---- drag-and-drop aware inputs ----
+from PySide6.QtWidgets import QLineEdit, QListWidget  # noqa: E402
+
+
+class DropLineEdit(QLineEdit):
+    """A line edit that also accepts dropped files/folders via a callback."""
+    def __init__(self, on_drop, parent=None):
+        super().__init__(parent)
+        self._on_drop = on_drop
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        paths = [u.toLocalFile() for u in e.mimeData().urls() if u.isLocalFile()]
+        if paths and self._on_drop:
+            self._on_drop(paths)
+            e.acceptProposedAction()
+
+
+class DropList(QListWidget):
+    """A list widget that accepts dropped files/folders via a callback."""
+    def __init__(self, on_drop, parent=None):
+        super().__init__(parent)
+        self._on_drop = on_drop
+        self._paths = []
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        paths = [u.toLocalFile() for u in e.mimeData().urls() if u.isLocalFile()]
+        if paths and self._on_drop:
+            self._on_drop(paths)
+            e.acceptProposedAction()

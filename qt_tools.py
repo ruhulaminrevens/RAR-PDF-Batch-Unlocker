@@ -68,8 +68,10 @@ class ToolsPage(QWidget):
         lay.addStretch(1)
 
     # ---- cards ----
-    def _list_box(self) -> QListWidget:
-        box = QListWidget(); box.setFixedHeight(104); box._paths = []
+    def _list_box(self, kind) -> QListWidget:
+        from qt_widgets import DropList
+        box = DropList(lambda paths: self.add_paths(box, kind, paths))
+        box.setFixedHeight(104)
         return box
 
     def _list_buttons(self, box, kind):
@@ -87,7 +89,7 @@ class ToolsPage(QWidget):
         c = Card(accent=T.CYAN, pad=(22, 20, 22, 22))
         c.add(label('Merge PDFs', 'section'))
         c.add(label('Combine several PDFs into one, in the order shown. Drag files in or use Up/Down.', 'muted'))
-        self.merge_list = self._list_box(); c.add(self.merge_list)
+        self.merge_list = self._list_box("pdf"); c.add(self.merge_list)
         c.add_layout(self._list_buttons(self.merge_list, 'pdf'))
         c.add(icon_button('merge', '#fff', 'Merge into one PDF…', kind='primary', on_click=self._merge))
         return c
@@ -114,7 +116,7 @@ class ToolsPage(QWidget):
         c = Card(accent=T.GREEN, pad=(22, 20, 22, 22))
         c.add(label('Images → PDF', 'section'))
         c.add(label('Combine jpg, png, bmp, tiff or webp images into one PDF, in the order shown.', 'muted'))
-        self.img_list = self._list_box(); c.add(self.img_list)
+        self.img_list = self._list_box("img"); c.add(self.img_list)
         c.add_layout(self._list_buttons(self.img_list, 'img'))
         c.add(icon_button('image', '#fff', 'Make PDF from images…', kind='primary', on_click=self._images))
         return c
