@@ -94,7 +94,7 @@ class ModernUI:
         tk.Label(sidebar,image=self.logo,bg=INSET).pack(anchor='w',padx=20,pady=(25,8))
         tk.Label(sidebar,text='RAR PDF',font=('Segoe UI',20,'bold'),fg=TEXT,bg=INSET).pack(anchor='w',padx=22)
         tk.Label(sidebar,text='BATCH UNLOCKER',font=('Segoe UI',9,'bold'),fg=MUTED,bg=INSET).pack(anchor='w',padx=22,pady=(2,28))
-        for key,label in [('workspace','01    Batch workspace'),('passwords','02    Passwords'),('results','03    Results & reports'),('settings','04    Run settings'),('help','05    About & help')]:
+        for key,label in [('workspace','01    Batch workspace'),('passwords','02    Passwords'),('results','03    Results & reports'),('tools','04    PDF tools'),('settings','05    Run settings'),('help','06    About & help')]:
             btn=ttk.Button(sidebar,text=label,style='Nav.TButton',command=lambda k=key:self._navigate(k))
             btn.pack(fill='x',padx=10,pady=3);self.nav[key]=btn
         tk.Frame(sidebar,bg=CYAN,height=2).pack(side='bottom',fill='x',padx=22,pady=20)
@@ -108,6 +108,7 @@ class ModernUI:
         self._workspace(self.pages['workspace'].body)
         self._password_page(self.pages['passwords'].body)
         self._results_page(self.pages['results'].body)
+        self._tools_page(self.pages['tools'].body)
         self._settings_page(self.pages['settings'].body)
         self._help_page(self.pages['help'].body)
         self.bind_all('<MouseWheel>',self._wheel,add='+')
@@ -247,6 +248,91 @@ class ModernUI:
         self.retry_btn=self._button(row,'Retry failures from last report',self._use_last_report);self.retry_btn.pack(side='left')
         ttk.Label(card,textvariable=self.report_text,style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(12,0))
         self.search.trace_add('write',lambda *a:self._filter_rows())
+
+    def _tools_page(self,parent):
+        self._heading(parent,'OFFLINE PDF TOOLKIT','PDF tools','Merge, split, reorganize, convert between images and PDF, and export a draft to Word or Excel. Everything runs on this PC; nothing is uploaded.')
+        self.tool_status=tk.StringVar(value='Choose a tool below. Protected PDFs must be unlocked first (Batch workspace).')
+        bar=self._card(parent,'Status')
+        ttk.Label(bar,textvariable=self.tool_status,style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(4,0))
+
+        # 1. Merge
+        m=self._card(parent,'Merge PDFs','Combine several PDFs into one, in the order shown. Use Up/Down to reorder.')
+        self.merge_list=self._file_listbox(m)
+        row=ttk.Frame(m,style='Card.TFrame');row.pack(fill='x',pady=(8,0))
+        self._button(row,'Add PDFs…',lambda:self._tool_add(self.merge_list,'pdf')).pack(side='left')
+        self._button(row,'Remove',lambda:self._tool_remove(self.merge_list)).pack(side='left',padx=6)
+        self._button(row,'Up',lambda:self._tool_move(self.merge_list,-1)).pack(side='left')
+        self._button(row,'Down',lambda:self._tool_move(self.merge_list,1)).pack(side='left',padx=6)
+        self._button(row,'Clear',lambda:self._tool_clear(self.merge_list)).pack(side='left')
+        self._button(m,'Merge into one PDF…',self._tool_merge,primary=True).pack(anchor='w',pady=(10,0))
+
+        # 2. Split / organize
+        s=self._card(parent,'Split & organize','Split one PDF into pieces, or keep/reorder/rotate pages. Pages like 1,3-5,8.')
+        self.split_input=tk.StringVar()
+        self._tool_input_row(s,self.split_input,'Source PDF')
+        row=ttk.Frame(s,style='Card.TFrame');row.pack(fill='x',pady=(6,0))
+        ttk.Label(row,text='Pages',width=self.px(14),style='Card.TLabel').pack(side='left')
+        self._remember(ttk.Entry(row,textvariable=self._mk('split_pages',''))).pack(side='left',fill='x',expand=True,padx=(0,8))
+        row=ttk.Frame(s,style='Card.TFrame');row.pack(fill='x',pady=(6,0))
+        ttk.Label(row,text='Rotate',width=self.px(14),style='Card.TLabel').pack(side='left')
+        self.split_rotate=tk.StringVar(value='0')
+        self._remember(ttk.Combobox(row,textvariable=self.split_rotate,values=['0','90','180','270'],state='readonly',width=8),'readonly').pack(side='left')
+        ttk.Label(row,text='degrees, applied to the kept pages',style='Note.TLabel').pack(side='left',padx=8)
+        row=ttk.Frame(s,style='Card.TFrame');row.pack(fill='x',pady=(10,0))
+        self._button(row,'Split every page…',lambda:self._tool_split('each'),primary=True).pack(side='left')
+        self._button(row,'Export selected pages…',lambda:self._tool_split('keep')).pack(side='left',padx=8)
+
+        # 3. Image -> PDF
+        i=self._card(parent,'Images → PDF','Combine images (jpg, png, bmp, tiff, webp) into one PDF, in the order shown.')
+        self.img_list=self._file_listbox(i)
+        row=ttk.Frame(i,style='Card.TFrame');row.pack(fill='x',pady=(8,0))
+        self._button(row,'Add images…',lambda:self._tool_add(self.img_list,'img')).pack(side='left')
+        self._button(row,'Remove',lambda:self._tool_remove(self.img_list)).pack(side='left',padx=6)
+        self._button(row,'Up',lambda:self._tool_move(self.img_list,-1)).pack(side='left')
+        self._button(row,'Down',lambda:self._tool_move(self.img_list,1)).pack(side='left',padx=6)
+        self._button(row,'Clear',lambda:self._tool_clear(self.img_list)).pack(side='left')
+        self._button(i,'Make PDF from images…',self._tool_img2pdf,primary=True).pack(anchor='w',pady=(10,0))
+
+        # 4. PDF -> images
+        pi=self._card(parent,'PDF → images','Save each page as an image. Larger DPI means sharper, bigger files.')
+        self.rimg_input=tk.StringVar()
+        self._tool_input_row(pi,self.rimg_input,'Source PDF')
+        row=ttk.Frame(pi,style='Card.TFrame');row.pack(fill='x',pady=(6,0))
+        ttk.Label(row,text='Format',width=self.px(14),style='Card.TLabel').pack(side='left')
+        self.rimg_fmt=tk.StringVar(value='png')
+        self._remember(ttk.Combobox(row,textvariable=self.rimg_fmt,values=['png','jpg','tiff','webp'],state='readonly',width=8),'readonly').pack(side='left')
+        ttk.Label(row,text='DPI',style='Card.TLabel').pack(side='left',padx=(16,6))
+        self.rimg_dpi=tk.StringVar(value='150')
+        self._remember(ttk.Combobox(row,textvariable=self.rimg_dpi,values=['72','100','150','200','300'],state='readonly',width=6),'readonly').pack(side='left')
+        self._button(pi,'Export pages as images…',self._tool_pdf2img,primary=True).pack(anchor='w',pady=(10,0))
+
+        # 5/6. PDF -> Word / Excel
+        c=self._card(parent,'PDF → Word / Excel  ·  draft','Text-based draft export. Works on PDFs with selectable text; scanned (image-only) PDFs need OCR, which is not included.')
+        self.conv_input=tk.StringVar()
+        self._tool_input_row(c,self.conv_input,'Source PDF')
+        row=ttk.Frame(c,style='Card.TFrame');row.pack(fill='x',pady=(10,0))
+        self._button(row,'Export to Word (.docx)…',lambda:self._tool_convert('docx'),primary=True).pack(side='left')
+        self._button(row,'Export to Excel (.xlsx)…',lambda:self._tool_convert('xlsx')).pack(side='left',padx=8)
+        ttk.Label(c,text='Tip: for an exact copy to print, use “PDF → images” instead — layout is preserved.',style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(10,0))
+
+    def _file_listbox(self,parent,height=4):
+        frame=ttk.Frame(parent,style='Card.TFrame');frame.pack(fill='x',pady=(8,0))
+        box=tk.Listbox(frame,height=height,bg=INSET,fg=TEXT,selectbackground='#284e7c',selectforeground=TEXT,
+                       relief='flat',highlightthickness=1,highlightbackground=BORDER,activestyle='none',font=('Segoe UI',10))
+        box.pack(side='left',fill='both',expand=True)
+        bar=ttk.Scrollbar(frame,orient='vertical',command=box.yview);bar.pack(side='right',fill='y');box.configure(yscrollcommand=bar.set)
+        box._paths=[]
+        self._remember(box)
+        return box
+
+    def _tool_input_row(self,parent,var,label):
+        row=ttk.Frame(parent,style='Card.TFrame');row.pack(fill='x',pady=(8,0))
+        ttk.Label(row,text=label,width=self.px(14),style='Card.TLabel').pack(side='left')
+        self._remember(ttk.Entry(row,textvariable=var)).pack(side='left',fill='x',expand=True,padx=(0,8))
+        self._button(row,'Browse',lambda:self._tool_pick_file(var)).pack(side='right')
+
+    def _mk(self,name,value):
+        var=tk.StringVar(value=value);setattr(self,name,var);return var
 
     def _settings_page(self,parent):
         self._heading(parent,'CONTROLLED EXECUTION','Run settings','Set a small file limit for a first pass, then process the full batch when you are ready.')

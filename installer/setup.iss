@@ -1,5 +1,5 @@
 #define MyAppName "RAR PDF Batch Unlocker"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.3.0"
 #define MyAppExeName "RAR-PDF-Batch-Unlocker.exe"
 [Setup]
 AppId={{F7D334A0-9E8C-4D21-BA8F-E82B624AB155}

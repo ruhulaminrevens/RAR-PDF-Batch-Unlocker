@@ -212,3 +212,76 @@ class ScalingLayoutTests(unittest.TestCase):
                                (1.5, (1366, 768)), (1.5, (1920, 1080)), (2.0, (1920, 1080)), (2.0, (2560, 1440)), (2.0, (3840, 2160))]:
             with self.subTest(factor=factor, screen=screen):
                 self.check(factor, screen)
+
+
+class ToolkitGuiTests(unittest.TestCase):
+    def setUp(self):
+        try:self.app=App()
+        except tk.TclError as exc:
+            if 'display' in str(exc).lower():self.skipTest('no display')
+            raise
+        self.app.withdraw();self.addCleanup(self.app._shutdown)
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name);self.out=self.root/'out';self.out.mkdir()
+        from scripts.fixtures import make_pdf
+        self.make=make_pdf
+        self.app._navigate('tools');self.app.update()
+
+    def pump(self):
+        end=time.monotonic()+15
+        while self.app.busy and time.monotonic()<end:
+            self.app.update();time.sleep(.01)
+        self.assertFalse(self.app.busy,'tool run did not finish')
+        self.app.update()
+
+    def test_merge_via_gui(self):
+        a,b=self.make(self.root/'a.pdf',None,pages=2),self.make(self.root/'b.pdf',None,pages=1)
+        out=self.out/'merged.pdf'
+        self.app.merge_list._paths=[str(a),str(b)]
+        with patch('app.filedialog.asksaveasfilename',return_value=str(out)),patch('app.messagebox.askyesno',return_value=False):
+            self.app._tool_merge();self.pump()
+        self.assertTrue(out.exists())
+        from pypdf import PdfReader;self.assertEqual(len(PdfReader(str(out)).pages),3)
+        self.assertIn('Done',self.app.tool_status.get())
+
+    def test_images_to_pdf_via_gui(self):
+        from PIL import Image
+        p=self.root/'x.png';Image.new('RGB',(120,80),(20,60,120)).save(p)
+        out=self.out/'img.pdf';self.app.img_list._paths=[str(p)]
+        with patch('app.filedialog.asksaveasfilename',return_value=str(out)),patch('app.messagebox.askyesno',return_value=False):
+            self.app._tool_img2pdf();self.pump()
+        self.assertTrue(out.exists())
+
+    def test_pdf_to_images_via_gui(self):
+        src=self.make(self.root/'r.pdf',None,pages=2)
+        self.app.rimg_input.set(str(src));self.app.rimg_fmt.set('png');self.app.rimg_dpi.set('72')
+        with patch('app.filedialog.askdirectory',return_value=str(self.out)),patch('app.messagebox.askyesno',return_value=False):
+            self.app._tool_pdf2img();self.pump()
+        self.assertEqual(len(list(self.out.glob('*.png'))),2)
+
+    def test_convert_docx_via_gui(self):
+        src=self.make(self.root/'c.pdf',None,pages=1)
+        out=self.out/'c.docx';self.app.conv_input.set(str(src))
+        with patch('app.filedialog.asksaveasfilename',return_value=str(out)),patch('app.messagebox.askyesno',return_value=False):
+            self.app._tool_convert('docx');self.pump()
+        self.assertTrue(out.exists())
+
+    def test_protected_pdf_prompts_for_password(self):
+        from scripts.fixtures import KNOWN
+        src=self.make(self.root/'enc.pdf',KNOWN,pages=1)
+        self.app.rimg_input.set(str(src));self.app.rimg_dpi.set('72')
+        with patch('app.filedialog.askdirectory',return_value=str(self.out)),\
+             patch('app.simpledialog.askstring',return_value=KNOWN),patch('app.messagebox.askyesno',return_value=False):
+            self.app._tool_pdf2img();self.pump()
+        self.assertEqual(len(list(self.out.glob('*.png'))),1)
+
+    def test_protected_pdf_cancel(self):
+        from scripts.fixtures import KNOWN
+        src=self.make(self.root/'enc.pdf',KNOWN,pages=1)
+        self.app.conv_input.set(str(src))
+        out=self.out/'c.docx'
+        with patch('app.filedialog.asksaveasfilename',return_value=str(out)),\
+             patch('app.simpledialog.askstring',return_value=None):
+            self.app._tool_convert('docx');self.pump()
+        self.assertFalse(out.exists())
+        self.assertIn('password-protected',self.app.tool_status.get())
