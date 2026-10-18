@@ -316,7 +316,11 @@ class MainWindow(PagesMixin, QWidget):
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.event.connect(self._on_event)
-        self.worker.finished.connect(self._on_finished)
+        # Canonical cleanup: never block the GUI thread with thread.wait().
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.finished.connect(self._run_finished)
         self.thread.start()
 
     def _stop(self):
@@ -357,9 +361,9 @@ class MainWindow(PagesMixin, QWidget):
         self.metrics['attention'].set(sum(v for k, v in self.counts.items() if k in core.FAILED))
         self.metrics['skipped'].set(sum(v for k, v in self.counts.items() if k.startswith('Skipped') or k == 'DryRun'))
 
-    def _on_finished(self):
-        if self.thread:
-            self.thread.quit(); self.thread.wait()
+    def _run_finished(self):
+        self.thread = None
+        self.worker = None
         self._set_busy(False)
 
     def _set_busy(self, value: bool):

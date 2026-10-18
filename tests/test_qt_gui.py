@@ -111,6 +111,21 @@ class QtGuiTests(unittest.TestCase):
         res = toolkit.merge_pdfs([a, b], out)  # backend path the GUI calls
         self.assertEqual(res.pages, 3)
 
+    def test_tool_worker_runs_async_without_deadlock(self):
+        from unittest.mock import patch
+        self.win.navigate('tools'); app().processEvents()
+        tp = self.win.tools_page
+        import toolkit
+        from PySide6.QtWidgets import QMessageBox
+        a = make_pdf(self.root / 'a.pdf', None, pages=2)
+        b = make_pdf(self.root / 'b.pdf', None, pages=1)
+        out = self.root / 'm.pdf'
+        with patch('qt_tools.QMessageBox.question', return_value=QMessageBox.No):
+            tp._run(lambda pw: toolkit.merge_pdfs([a, b], out), out.parent)
+            self.pump()
+        self.assertTrue(out.exists())
+        self.assertFalse(self.win.busy)
+
     def test_tools_add_folder_expands(self):
         self.win.navigate('tools'); app().processEvents()
         tp = self.win.tools_page

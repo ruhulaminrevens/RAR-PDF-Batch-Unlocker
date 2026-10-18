@@ -214,44 +214,49 @@ class ToolsPage(QWidget):
             return
         self.host.set_busy(True)
         self.status.setText('Working…')
-        self.thread = QThread()
-        self.worker = ToolWorker(make_call, open_target)
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
-        self.worker.done.connect(self._done)
-        self.worker.failed.connect(self._failed)
-        self.worker.need_password.connect(self._need_password)
-        self.thread.start()
+        self._start_worker(ToolWorker(make_call, open_target), retry=False)
 
-    def _end_thread(self):
-        if self.thread:
-            self.thread.quit(); self.thread.wait(); self.thread = None
+    def _start_worker(self, worker, retry):
+        """Run a tool worker on its own QThread. Cleanup is async — the GUI thread
+        never calls thread.wait(), which deadlocks on Windows when invoked from a
+        signal handler."""
+        thread = QThread()
+        self.thread = thread
+        self.worker = worker
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.done.connect(self._done)
+        worker.failed.connect(self._failed)
+        if retry:
+            worker.need_password.connect(lambda: self._failed('The supplied password did not open the PDF.'))
+        else:
+            worker.need_password.connect(self._need_password)
+        for sig in (worker.done, worker.failed, worker.need_password):
+            sig.connect(thread.quit)
+        worker.done.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
 
     def _done(self, result, open_target):
-        self._end_thread(); self.host.set_busy(False)
+        self.host.set_busy(False)
         self.status.setText(f'Done — {result.note}. Saved to: {Path(open_target)}')
         if QMessageBox.question(self, 'Finished', f'{result.note}.\n\nOpen the output folder?') == QMessageBox.Yes:
             self.host.open_path(open_target)
 
     def _failed(self, message):
-        self._end_thread(); self.host.set_busy(False)
+        self.host.set_busy(False)
         self.status.setText('Could not finish: ' + message)
         QMessageBox.critical(self, 'PDF tools', message)
 
     def _need_password(self):
-        pw, ok = QInputDialog.getText(self, 'Protected PDF', 'This PDF needs its open password:', QLineEdit.Password)
         make_call = self.worker.make_call; target = self.worker.open_target
-        self._end_thread()
+        pw, ok = QInputDialog.getText(self, 'Protected PDF', 'This PDF needs its open password:', QLineEdit.Password)
         if not ok or not pw:
             self.host.set_busy(False); self.status.setText('Cancelled — the PDF is password-protected.'); return
         diagnostics.remember_secret(pw)
-        self.thread = QThread()
-        self.worker = ToolWorker(make_call, target); self.worker.password = pw
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
-        self.worker.done.connect(self._done); self.worker.failed.connect(self._failed)
-        self.worker.need_password.connect(lambda: self._failed('The supplied password did not open the PDF.'))
-        self.thread.start()
+        worker = ToolWorker(make_call, target); worker.password = pw
+        self._start_worker(worker, retry=True)
 
     def _merge(self):
         import toolkit
