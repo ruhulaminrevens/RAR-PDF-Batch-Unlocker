@@ -300,7 +300,7 @@ class DragDropTests(unittest.TestCase):
         self.make=make_pdf
 
     def test_splitlist_parses_braced_paths(self):
-        data='{%s} %s'%(str(self.root/'a b.pdf'),str(self.root/'c.pdf'))
+        data='{%s} {%s}'%(str(self.root/'a b.pdf'),str(self.root/'c.pdf'))
         self.assertEqual(list(self.app.tk.splitlist(data)),[str(self.root/'a b.pdf'),str(self.root/'c.pdf')])
 
     def test_drop_source_sets_folder_and_adds_pdfs(self):
