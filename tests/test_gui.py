@@ -285,3 +285,55 @@ class ToolkitGuiTests(unittest.TestCase):
             self.app._tool_convert('docx');self.pump()
         self.assertFalse(out.exists())
         self.assertIn('password-protected',self.app.tool_status.get())
+
+
+class DragDropTests(unittest.TestCase):
+    def setUp(self):
+        try:self.app=App()
+        except tk.TclError as exc:
+            if 'display' in str(exc).lower():self.skipTest('no display')
+            raise
+        self.app.withdraw();self.addCleanup(self.app._shutdown)
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name)
+        from scripts.fixtures import make_pdf
+        self.make=make_pdf
+
+    def test_splitlist_parses_braced_paths(self):
+        data='{%s} %s'%(str(self.root/'a b.pdf'),str(self.root/'c.pdf'))
+        self.assertEqual(list(self.app.tk.splitlist(data)),[str(self.root/'a b.pdf'),str(self.root/'c.pdf')])
+
+    def test_drop_source_sets_folder_and_adds_pdfs(self):
+        folder=self.root/'src';folder.mkdir()
+        f=self.make(self.root/'one.pdf',None)
+        self.app._drop_source([str(folder),str(f)])
+        self.assertEqual(self.app.source.get(),str(folder))
+        self.assertIn(str(f),self.app.extra_files)
+
+    def test_drop_output_requires_folder(self):
+        folder=self.root/'out';folder.mkdir()
+        self.app._drop_output([str(folder)])
+        self.assertEqual(self.app.destination.get(),str(folder))
+        with patch('app.messagebox.showinfo') as info:
+            self.app._drop_output([str(self.make(self.root/'x.pdf',None))])
+            info.assert_called_once()
+
+    def test_drop_into_merge_list_and_folder_expand(self):
+        self.app._navigate('tools');self.app.update()
+        a=self.make(self.root/'a.pdf',None)
+        sub=self.root/'more';sub.mkdir();b=self.make(sub/'b.pdf',None);(sub/'note.txt').write_text('x')
+        self.app._add_paths_to_list(self.app.merge_list,'pdf',[str(a),str(sub)])
+        self.assertEqual(sorted(Path(p).name for p in self.app.merge_list._paths),['a.pdf','b.pdf'])
+
+    def test_drop_single_pdf_picks_first_pdf(self):
+        self.app._navigate('tools');self.app.update()
+        f=self.make(self.root/'c.pdf',None)
+        self.app._drop_single_pdf(self.app.conv_input,[str(self.root/'x.txt'),str(f)])
+        self.assertEqual(self.app.conv_input.get(),str(f))
+
+    def test_drop_is_ignored_while_busy(self):
+        self.app.busy=True
+        class E: data=str(self.make(self.root/'d.pdf',None))
+        called=[]
+        self.app._on_drop(E(),lambda p:called.append(p))
+        self.assertEqual(called,[])
