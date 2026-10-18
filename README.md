@@ -18,7 +18,7 @@
 No Python or qpdf install is needed. Installing over an older version upgrades it in place.
 The installer is **not code-signed**, so Windows SmartScreen may show *More info → Run anyway*. Check the SHA-256 if you want to be sure the file is genuine.
 
-![RAR PDF Batch Unlocker — installed app after a synthetic test batch](docs/screenshots/installed-window.png)
+![RAR PDF Batch Unlocker v1.4.0 — batch workspace after a synthetic test batch](docs/screenshots/v1.4.0-workspace.png)
 
 ## Quick start · দ্রুত শুরু
 
@@ -60,14 +60,14 @@ Tip: for the first run, set **File limit = 5** in *Run settings*.
 ## Screenshots
 
 <details>
-<summary>Results, passwords, settings and installer</summary>
+<summary>Results, passwords, run settings and PDF tools</summary>
 
-![Results](docs/screenshots/batch-results.png)
-![Password groups](docs/screenshots/password-groups.png)
-![Run settings](docs/screenshots/run-settings.png)
-![Installer](docs/screenshots/installer.png)
+![Results & reports](docs/screenshots/v1.4.0-results.png)
+![Password groups](docs/screenshots/v1.4.0-passwords.png)
+![Run settings](docs/screenshots/v1.4.0-settings.png)
+![PDF tools](docs/screenshots/v1.4.0-tools.png)
 
-All screenshots were captured automatically on Windows from the real app, using synthetic test PDFs only.
+These are renders of the v1.4.0 interface, using synthetic test PDFs only. Real installed-EXE Windows captures of the same interface (validated at the redesign baseline) are in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 </details>
 
 ## Troubleshooting
