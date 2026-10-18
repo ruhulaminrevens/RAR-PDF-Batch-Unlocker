@@ -14,6 +14,18 @@ import diagnostics
 from branding import APP_NAME, VERSION, prepare_windows
 from ui import ModernUI, STATUS_LABELS, BG, INSET, TEXT, CYAN
 
+# Optional native drag-and-drop. Falls back to plain Tk (no drops) if unavailable.
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    _TK_BASE = TkinterDnD.Tk
+    HAS_DND = True
+except Exception:
+    _TK_BASE = tk.Tk
+    DND_FILES = None
+    HAS_DND = False
+
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tif', '.tiff', '.webp'}
+
 HINTS = """Password recovery guidance (not a password bypass):
 
 BANK & CREDIT CARD: Check the original statement email, official bank help pages, statement portal, and issuer support. Password conventions vary by institution and over time. Do not assume a generic DOB/card-number rule.
@@ -37,11 +49,12 @@ def find_qpdf():
             return str(candidate)
     return shutil.which('qpdf') or ''
 
-class App(ModernUI, tk.Tk):
+class App(ModernUI, _TK_BASE):
     def __init__(self):
         prepare_windows()
         super().__init__()
         diagnostics.install(self)
+        self.dnd_enabled=HAS_DND
         if os.environ.get('RAR_TK_SCALING'):  # QA: emulate 125/150/200 % display scaling
             self.tk.call('tk','scaling',float(os.environ['RAR_TK_SCALING']))
         self.title(f'{APP_NAME} · {VERSION}')
@@ -176,11 +189,70 @@ class App(ModernUI, tk.Tk):
         else:
             types=[('PDF files','*.pdf'),('All files','*')]
         chosen=filedialog.askopenfilenames(title='Add files',filetypes=types)
+        self._add_paths_to_list(box,kind,chosen)
+
+    def _add_paths_to_list(self,box,kind,paths):
+        exts=IMAGE_EXTS if kind=='img' else {'.pdf'}
         known={os.path.normcase(os.path.abspath(p)) for p in box._paths}
-        for f in chosen:
-            key=os.path.normcase(os.path.abspath(f))
+        added=0
+        def add_one(p):
+            nonlocal added
+            key=os.path.normcase(os.path.abspath(p))
             if key not in known:
-                box._paths.append(f);known.add(key);box.insert('end',os.path.basename(f))
+                box._paths.append(str(p));known.add(key);box.insert('end',os.path.basename(p));added+=1
+        for f in paths:
+            p=Path(f)
+            if p.is_dir():  # dropping a folder adds the matching files inside it
+                for sub in sorted(p.rglob('*'),key=lambda x:str(x).casefold()):
+                    if sub.is_file() and sub.suffix.lower() in exts:add_one(sub)
+            elif p.is_file() and p.suffix.lower() in exts:
+                add_one(p)
+        return added
+
+    # ---- drag and drop ----
+    def _drop_target(self,widget,callback):
+        if not self.dnd_enabled:return
+        try:
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind('<<Drop>>',lambda e:self._on_drop(e,callback))
+        except Exception:pass
+
+    def _on_drop(self,event,callback):
+        if self.busy:return
+        try:paths=[p for p in self.tk.splitlist(event.data)]
+        except Exception:paths=[event.data]
+        paths=[p for p in paths if p]
+        if paths:callback(paths)
+
+    def _drop_source(self,paths):
+        dirs=[p for p in paths if Path(p).is_dir()]
+        pdfs=[p for p in paths if Path(p).is_file() and Path(p).suffix.lower()=='.pdf']
+        if dirs:self.source.set(dirs[0])
+        if pdfs:
+            self._add_extra_files(pdfs)
+        elif dirs:
+            self.status.set(f'Source folder set from drop: {dirs[0]}')
+
+    def _drop_output(self,paths):
+        dirs=[p for p in paths if Path(p).is_dir()]
+        if dirs:self.destination.set(dirs[0]);self.status.set(f'Output folder set from drop: {dirs[0]}')
+        else:messagebox.showinfo('Output folder','Drop a folder here to use it as the output folder.')
+
+    def _drop_single_pdf(self,var,paths):
+        pdfs=[p for p in paths if Path(p).is_file() and Path(p).suffix.lower()=='.pdf']
+        if pdfs:var.set(pdfs[0])
+        else:messagebox.showinfo('Drop a PDF','Drop a single PDF file here.')
+
+    def _add_extra_files(self,paths):
+        known={os.path.normcase(os.path.abspath(f)) for f in self.extra_files}
+        added=0
+        for f in paths:
+            p=Path(f)
+            if p.is_file() and p.suffix.lower()=='.pdf':
+                key=os.path.normcase(os.path.abspath(p))
+                if key not in known:self.extra_files.append(str(p));known.add(key);added+=1
+        self._files_changed(0)
+        if added:self.status.set(f'{added} PDF(s) added from drop.')
 
     def _tool_remove(self,box):
         if self.busy:return

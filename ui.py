@@ -148,18 +148,21 @@ class ModernUI:
             var=tk.StringVar(value='—');self.metric_vars[key]=var
             tk.Label(card,textvariable=var,font=('Segoe UI',26,'bold'),bg=SURFACE,fg=color).pack(anchor='w',padx=14,pady=(9,0))
             tk.Label(card,text=label,font=('Segoe UI',8,'bold'),bg=SURFACE,fg=MUTED).pack(anchor='w',padx=14,pady=(2,12))
-        paths=self._card(parent,'01   Inputs & output','Choose a source folder, add individual PDFs, or both. Output must be a separate folder; subfolders are preserved.')
+        drag=' Drag a folder or PDFs onto these boxes.' if getattr(self,'dnd_enabled',False) else ''
+        paths=self._card(parent,'01   Inputs & output','Choose a source folder, add individual PDFs, or both. Output must be a separate folder; subfolders are preserved.'+drag)
         self.path_entries={}
-        for label,var,is_folder in [('Source folder',self.source,True),('Output folder',self.destination,True)]:
+        for label,var,is_folder,drop in [('Source folder',self.source,True,self._drop_source),('Output folder',self.destination,True,self._drop_output)]:
             row=ttk.Frame(paths,style='Card.TFrame');row.pack(fill='x',pady=4)
             ttk.Label(row,text=label,width=14,style='Card.TLabel').pack(side='left')
             ent=self._remember(ttk.Entry(row,textvariable=var));ent.pack(side='left',fill='x',expand=True,padx=(0,8));self.path_entries[label]=ent
+            self._drop_target(ent,drop)
             self._button(row,'Browse',lambda v=var,f=is_folder:self._browse(v,f)).pack(side='right')
         row=ttk.Frame(paths,style='Card.TFrame');row.pack(fill='x',pady=4)
         ttk.Label(row,text='Single PDFs',width=14,style='Card.TLabel').pack(side='left')
         self._button(row,'Clear',self._clear_files).pack(side='right')
         self._button(row,'Add PDFs…',self._add_files).pack(side='right',padx=(0,8))
-        ttk.Label(row,textvariable=self.files_summary,style='Note.TLabel',width=1).pack(side='left',fill='x',expand=True,padx=(0,8))
+        files_lbl=ttk.Label(row,textvariable=self.files_summary,style='Note.TLabel',width=1);files_lbl.pack(side='left',fill='x',expand=True,padx=(0,8))
+        self._drop_target(files_lbl,lambda paths:self._add_extra_files(paths))
         row=ttk.Frame(paths,style='Card.TFrame');row.pack(fill='x',pady=(9,0))
         self.scan_btn=self._button(row,'Scan filenames',self._scan);self.scan_btn.pack(side='left')
         self.analyze_btn=self._button(row,'Analyze security',lambda:self._start(True));self.analyze_btn.pack(side='left',padx=8)
@@ -250,7 +253,8 @@ class ModernUI:
         self.search.trace_add('write',lambda *a:self._filter_rows())
 
     def _tools_page(self,parent):
-        self._heading(parent,'OFFLINE PDF TOOLKIT','PDF tools','Merge, split, reorganize, convert between images and PDF, and export a draft to Word or Excel. Everything runs on this PC; nothing is uploaded.')
+        drag=' You can drag files straight onto the lists and boxes below.' if getattr(self,'dnd_enabled',False) else ''
+        self._heading(parent,'OFFLINE PDF TOOLKIT','PDF tools','Merge, split, reorganize, convert between images and PDF, and export a draft to Word or Excel. Everything runs on this PC; nothing is uploaded.'+drag)
         self.tool_status=tk.StringVar(value='Choose a tool below. Protected PDFs must be unlocked first (Batch workspace).')
         bar=self._card(parent,'Status')
         ttk.Label(bar,textvariable=self.tool_status,style='Note.TLabel',wraplength=self.px(760)).pack(anchor='w',pady=(4,0))
@@ -258,6 +262,7 @@ class ModernUI:
         # 1. Merge
         m=self._card(parent,'Merge PDFs','Combine several PDFs into one, in the order shown. Use Up/Down to reorder.')
         self.merge_list=self._file_listbox(m)
+        self._drop_target(self.merge_list,lambda paths:self._add_paths_to_list(self.merge_list,'pdf',paths))
         row=ttk.Frame(m,style='Card.TFrame');row.pack(fill='x',pady=(8,0))
         self._button(row,'Add PDFs…',lambda:self._tool_add(self.merge_list,'pdf')).pack(side='left')
         self._button(row,'Remove',lambda:self._tool_remove(self.merge_list)).pack(side='left',padx=6)
@@ -285,6 +290,7 @@ class ModernUI:
         # 3. Image -> PDF
         i=self._card(parent,'Images → PDF','Combine images (jpg, png, bmp, tiff, webp) into one PDF, in the order shown.')
         self.img_list=self._file_listbox(i)
+        self._drop_target(self.img_list,lambda paths:self._add_paths_to_list(self.img_list,'img',paths))
         row=ttk.Frame(i,style='Card.TFrame');row.pack(fill='x',pady=(8,0))
         self._button(row,'Add images…',lambda:self._tool_add(self.img_list,'img')).pack(side='left')
         self._button(row,'Remove',lambda:self._tool_remove(self.img_list)).pack(side='left',padx=6)
@@ -328,7 +334,8 @@ class ModernUI:
     def _tool_input_row(self,parent,var,label):
         row=ttk.Frame(parent,style='Card.TFrame');row.pack(fill='x',pady=(8,0))
         ttk.Label(row,text=label,width=self.px(14),style='Card.TLabel').pack(side='left')
-        self._remember(ttk.Entry(row,textvariable=var)).pack(side='left',fill='x',expand=True,padx=(0,8))
+        ent=self._remember(ttk.Entry(row,textvariable=var));ent.pack(side='left',fill='x',expand=True,padx=(0,8))
+        self._drop_target(ent,lambda paths,v=var:self._drop_single_pdf(v,paths))
         self._button(row,'Browse',lambda:self._tool_pick_file(var)).pack(side='right')
 
     def _mk(self,name,value):
