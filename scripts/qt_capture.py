@@ -15,10 +15,16 @@ import time
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 import qt_main
 from branding import VERSION
 from scripts.fixtures import create_fixtures, KNOWN
+
+# Headless render: a modal dialog would block forever with no one to dismiss it.
+# Correctness is still asserted from the result counts below.
+for _name in ('information', 'warning', 'critical'):
+    setattr(QMessageBox, _name, staticmethod(lambda *a, **k: QMessageBox.Ok))
+QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.No)
 
 
 def grab(win, path):

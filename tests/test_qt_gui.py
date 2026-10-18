@@ -3,10 +3,13 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import time
 import unittest
+
+QPDF = os.environ.get('RAR_TEST_QPDF') or shutil.which('qpdf')
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -34,6 +37,8 @@ class QtGuiTests(unittest.TestCase):
         app()
         import qt_main
         self.win = qt_main.MainWindow()
+        if QPDF:
+            self.win.qpdf = QPDF  # tests step sets RAR_TEST_QPDF, not PATH
         self.addCleanup(self.win.deleteLater)
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
@@ -55,6 +60,7 @@ class QtGuiTests(unittest.TestCase):
             self.win.navigate(key); app().processEvents()
             self.assertIsNotNone(self.win.pages[key])
 
+    @unittest.skipUnless(QPDF, 'Real qpdf executable not available')
     def test_real_unlock_fills_results(self):
         src = create_fixtures(self.root).resolve()
         self.win.source_edit.setText(str(src))
