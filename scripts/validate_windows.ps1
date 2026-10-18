@@ -44,8 +44,8 @@ foreach ($pair in @(@($exe,'installed-exe-icon.png'),@($installer,'installer-ico
 }
 python scripts/verify_icon_resources.py
 if ($LASTEXITCODE -ne 0) { throw 'Extracted icon does not match branding' }
-python scripts/validate_installed.py --exe $exe --qa qa
-if ($LASTEXITCODE -ne 0) { throw 'Installed GUI functional QA failed' }
+python scripts/validate_installed_qt.py --exe $exe --qa qa
+if ($LASTEXITCODE -ne 0) { throw 'Installed Qt GUI smoke failed' }
 $uninstall=Start-Process (Join-Path $installDir 'unins000.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
 if ($uninstall.ExitCode -ne 0) { throw 'Uninstall failed' }
 Start-Sleep -Seconds 2

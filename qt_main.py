@@ -18,8 +18,9 @@ import core
 import diagnostics
 from branding import APP_NAME, VERSION
 import qt_theme as T
-from qt_widgets import (Card, Chip, MetricTile, NavButton, eyebrow_title, icon_button,
-                        label, shadow)
+from qt_widgets import (Card, Chip, DropLineEdit, MetricTile, NavButton, eyebrow_title,
+                        icon_button, label, shadow)
+from qt_pages import PagesMixin
 
 NAV = [('workspace', 'Batch workspace', 'workspace'), ('passwords', 'Passwords', 'key'),
        ('results', 'Results & reports', 'results'), ('tools', 'PDF tools', 'tools'),
@@ -71,7 +72,7 @@ def scroll_page(build) -> QScrollArea:
     return area
 
 
-class MainWindow(QWidget):
+class MainWindow(PagesMixin, QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName('Root')
@@ -91,6 +92,9 @@ class MainWindow(QWidget):
         self.counts: dict[str, int] = {}
         self.total = 0
         self.completed = 0
+        self.last_report = ''
+        self.last_html = ''
+        self.last_output = ''
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -106,9 +110,11 @@ class MainWindow(QWidget):
         tools_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.tools_page = ToolsPage(self); tools_area.setWidget(self.tools_page)
         self.pages['tools'] = tools_area
-        for key, _, _ in NAV:
-            if key not in self.pages:
-                self.pages[key] = self._placeholder(key)
+        self.pages['passwords'] = self.build_passwords()
+        self.pages['results'] = self.build_results()
+        self.pages['settings'] = self.build_settings()
+        self.pages['help'] = self.build_help()
+        self._pw_update_count()
         for key, _, _ in NAV:
             self.stack.addWidget(self.pages[key])
         self.navigate('workspace')
@@ -188,8 +194,8 @@ class MainWindow(QWidget):
         row.addStretch(1)
         row.addWidget(label('Drag a folder or PDFs onto the boxes', 'faint'))
         inputs.add_layout(row)
-        self.source_edit = self._path_row(inputs, 'SOURCE FOLDER', folder=True)
-        self.output_edit = self._path_row(inputs, 'OUTPUT FOLDER', folder=True)
+        self.source_edit = self._path_row(inputs, 'SOURCE FOLDER', folder=True, on_drop=self._drop_source)
+        self.output_edit = self._path_row(inputs, 'OUTPUT FOLDER', folder=True, on_drop=self._drop_output)
         files_row = QHBoxLayout()
         self.files_label = label('No single PDFs added — use a folder, add PDFs, or both', 'faint')
         files_row.addWidget(self.files_label, 1)
@@ -221,10 +227,11 @@ class MainWindow(QWidget):
         prev.add(self.preview)
         lay.addWidget(prev)
 
-    def _path_row(self, card: Card, text: str, folder: bool) -> QLineEdit:
+    def _path_row(self, card: Card, text: str, folder: bool, on_drop=None) -> QLineEdit:
         card.add(label(text, 'fieldlabel'))
         row = QHBoxLayout(); row.setSpacing(10)
-        edit = QLineEdit(); edit.setProperty('mono', 'true'); edit.setPlaceholderText('—')
+        edit = DropLineEdit(on_drop) if on_drop else QLineEdit()
+        edit.setProperty('mono', 'true'); edit.setPlaceholderText('— drop a folder or PDFs here —')
         row.addWidget(edit, 1)
         browse = QPushButton('Browse')
         browse.clicked.connect(lambda: self._browse(edit, folder))
@@ -263,26 +270,44 @@ class MainWindow(QWidget):
             names = ', '.join(Path(f).name for f in self.extra_files[:3]) + (' …' if n > 3 else '')
             self.files_label.setText(f'{n} PDF{"s" if n != 1 else ""}: {names}')
 
-    def _settings(self):
-        src = self.source_edit.text().strip()
-        if not (src or self.extra_files):
-            raise ValueError('Choose a source folder or add PDF files.')
-        if not self.output_edit.text().strip():
-            raise ValueError('Choose an output folder.')
-        return core.Settings(Path(src) if src else None, Path(self.output_edit.text().strip()),
-                             self.qpdf or 'qpdf', list(self.password_groups['General']),
-                             inputs=[Path(f) for f in self.extra_files], app_version=VERSION,
-                             workers=min(4, max(1, (os.cpu_count() or 2) // 2)))
+    def _drop_source(self, paths):
+        if self.busy:
+            return
+        dirs = [p for p in paths if Path(p).is_dir()]
+        pdfs = [p for p in paths if Path(p).is_file() and Path(p).suffix.lower() == '.pdf']
+        if dirs:
+            self.source_edit.setText(dirs[0])
+        if pdfs:
+            self._add_extra_files(pdfs)
+
+    def _drop_output(self, paths):
+        if self.busy:
+            return
+        dirs = [p for p in paths if Path(p).is_dir()]
+        if dirs:
+            self.output_edit.setText(dirs[0])
+
+    def _add_extra_files(self, paths):
+        known = {os.path.normcase(os.path.abspath(f)) for f in self.extra_files}
+        for f in paths:
+            p = Path(f)
+            if p.is_file() and p.suffix.lower() == '.pdf':
+                k = os.path.normcase(os.path.abspath(p))
+                if k not in known:
+                    self.extra_files.append(str(p)); known.add(k)
+        self._files_changed()
 
     def _start_unlock(self):
         if self.busy:
             return
         try:
-            settings = self._settings()
+            settings = self.assemble_settings()
         except Exception as exc:
             QMessageBox.warning(self, 'Configuration', str(exc)); return
         self.stop_flag = threading.Event()
         self.counts = {}; self.total = 0; self.completed = 0
+        self.last_output = str(settings.destination)
+        self.clear_results()
         self._set_busy(True)
         self.timing_label.setText('Processing…')
         self.preview.setText('')
@@ -291,7 +316,11 @@ class MainWindow(QWidget):
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.event.connect(self._on_event)
-        self.worker.finished.connect(self._on_finished)
+        # Canonical cleanup: never block the GUI thread with thread.wait().
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.finished.connect(self._run_finished)
         self.thread.start()
 
     def _stop(self):
@@ -309,14 +338,19 @@ class MainWindow(QWidget):
             self.progress.setValue(pct)
             self.progress_label.setText(f'{self.completed} / {self.total} · {pct}%')
             self._update_metrics()
+            self.add_result_row(payload)
             name = payload.get('relative') or Path(payload['source']).name
             self.preview.setText(f"{payload['status']} — {name}")
         elif kind == 'done':
             summary = payload.get('summary') or {}
             elapsed = summary.get('elapsed_seconds')
+            self.last_report = payload.get('report') or ''
+            self.last_html = payload.get('html') or ''
             state = 'Stopped: output drive full' if payload.get('halted') == 'DiskFull' else \
                 'Stopped safely' if payload.get('cancelled') else 'Complete'
             self.timing_label.setText(f"{state} · {self.completed} of {self.total} PDFs" + (f' · {elapsed:.1f}s' if elapsed else ''))
+            if hasattr(self, 'report_label'):
+                self.report_label.setText(f'CSV: {self.last_report}' if self.last_report else 'No report (dry run).')
         elif kind == 'error':
             self.timing_label.setText('Could not finish — see the error.')
             QMessageBox.critical(self, 'Processing error', str(payload))
@@ -327,9 +361,9 @@ class MainWindow(QWidget):
         self.metrics['attention'].set(sum(v for k, v in self.counts.items() if k in core.FAILED))
         self.metrics['skipped'].set(sum(v for k, v in self.counts.items() if k.startswith('Skipped') or k == 'DryRun'))
 
-    def _on_finished(self):
-        if self.thread:
-            self.thread.quit(); self.thread.wait()
+    def _run_finished(self):
+        self.thread = None
+        self.worker = None
         self._set_busy(False)
 
     def _set_busy(self, value: bool):
