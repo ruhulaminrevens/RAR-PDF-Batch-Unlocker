@@ -35,10 +35,27 @@ jobs:
           # Emulate a default Windows install where long Win32 paths are not enabled.
           Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' LongPathsEnabled 0
           $env:QT_QPA_PLATFORM='offscreen'
-          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath test-results.txt
-          $code=$LASTEXITCODE
-          python scripts/annotate_failures.py test-results.txt
-          if ($code -ne 0) { exit $code }
+          # Run the Qt tests and the Tk/engine tests in SEPARATE processes: mixing
+          # both GUI toolkits in one interpreter can deadlock on Windows. Each run
+          # has a watchdog so a hang reports the last test instead of burning the job.
+          function Invoke-Tests($name, $modules, $outfile) {
+            $targs = @('-u','-m','unittest') + $modules + @('-v')
+            $p = Start-Process -FilePath python -ArgumentList $targs -RedirectStandardOutput $outfile -RedirectStandardError "$outfile.err" -NoNewWindow -PassThru
+            if (-not $p.WaitForExit(600000)) {
+              $p.Kill()
+              $last = ((Get-Content $outfile -Tail 4) + (Get-Content "$outfile.err" -Tail 6)) -join ' || '
+              Write-Host "::error title=$name timed out::$last"
+              Get-Content $outfile -Tail 40 | Write-Host
+              throw "$name timed out (watchdog)"
+            }
+            Get-Content "$outfile.err" -Tail 15 | Write-Host
+            python scripts/annotate_failures.py $outfile
+            return $p.ExitCode
+          }
+          $c1 = Invoke-Tests 'engine+Tk tests' @('tests.test_core','tests.test_toolkit','tests.test_branding','tests.test_vault','tests.test_gui') 'test-results.txt'
+          $c2 = Invoke-Tests 'Qt GUI tests' @('tests.test_qt_gui') 'test-results-qt.txt'
+          if ($c1 -ne 0) { exit $c1 }
+          if ($c2 -ne 0) { exit $c2 }
       - name: Benchmark 100 and 1,000 synthetic PDFs
         shell: pwsh
         run: |
@@ -89,4 +106,5 @@ jobs:
             qa/benchmark.json
             qa/*.log
             test-results.txt
+            test-results-qt.txt
           if-no-files-found: warn
