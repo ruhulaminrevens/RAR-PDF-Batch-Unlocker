@@ -24,7 +24,7 @@ jobs:
       - name: Prepare visible desktop for real screenshots
         run: python scripts/prepare_desktop.py
       - name: Compile Python sources
-        run: python -m compileall -q app.py ui.py branding.py core.py reports.py diagnostics.py toolkit.py vault.py scripts tests
+        run: python -m compileall -q app.py ui.py qt_main.py qt_theme.py qt_widgets.py qt_pages.py qt_tools.py branding.py core.py reports.py diagnostics.py toolkit.py vault.py scripts tests
       - name: Build branded GUI with checksum-verified qpdf
         shell: pwsh
         run: ./scripts/build_windows.ps1
@@ -34,6 +34,7 @@ jobs:
           $env:RAR_TEST_QPDF=(Resolve-Path 'bundled-qpdf/bin/qpdf.exe').Path
           # Emulate a default Windows install where long Win32 paths are not enabled.
           Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' LongPathsEnabled 0
+          $env:QT_QPA_PLATFORM='offscreen'
           python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath test-results.txt
           $code=$LASTEXITCODE
           python scripts/annotate_failures.py test-results.txt
@@ -45,11 +46,12 @@ jobs:
           python scripts/benchmark.py --counts 100,1000 --workers 1,4 --out qa/benchmark.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -c "import json;d=json.load(open('qa/benchmark.json'));print('::notice title=benchmark::'+json.dumps(d).replace('%','%25'))"
-      - name: Real GUI scenario and screenshots
+      - name: Real Qt GUI scenario and screenshots
         shell: pwsh
         run: |
           $env:PATH="$(Resolve-Path 'bundled-qpdf/bin');$env:PATH"
-          python scripts/capture_screenshots.py
+          $env:QT_QPA_PLATFORM='offscreen'
+          python scripts/qt_capture.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile branded installer
         shell: pwsh
